@@ -8,7 +8,7 @@ BUILDDIR = ./build
 RELEASE = 0
 
 CC = gcc
-CFLAGS = -std=c11 -fno-strict-aliasing \
+CFLAGS = -std=gnu11 -fno-strict-aliasing \
 	-Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers \
 	-Wformat-security -Werror=format-security
 LDFLAGS =
@@ -30,7 +30,7 @@ endif
 LDLIBS += -lc
 
 # libstb-dev - https://github.com/nothings/stb
-CFLAGS += $(shell pkg-config --cflags stb)
+CFLAGS += $(shell pkg-config --cflags stb) -DSTBDS_NO_SHORT_NAMES
 LDFLAGS += $(shell pkg-config --libs-only-L stb)
 LDLIBS += $(shell pkg-config --libs-only-l stb)
 
@@ -52,6 +52,6 @@ test: $(BUILDDIR)/mk-index
 
 .SUFFIXES:
 
-$(BUILDDIR)/mk-index: src/mk-index.c
+$(BUILDDIR)/mk-index: src/mk-index.c src/index.c
 	mkdir -p $(BUILDDIR)
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(LDLIBS) -o $@

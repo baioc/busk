@@ -1,25 +1,32 @@
-#include <stdlib.h> // EXIT_*, NULL
-#include <stdbool.h>
-#include <stdio.h>
+#include "index.c"
 
 #include <argp.h>
 #include <stb/stb_ds.h> // arr* macros
 
+#include <stdbool.h>
+#include <stddef.h> // NULL
+#include <stdio.h>
 
-struct config {
-	const char **corpus_paths;
-	const char *index_path;
+
+typedef struct {
+	const char **corpus_root_dirs;
+	const char *index_output_path;
 	bool verbose;
-};
+} Config;
+
+void config_cleanup(Config *cfg)
+{
+	stbds_arrfree(cfg->corpus_root_dirs);
+}
 
 
 const char *argp_program_version = "0.1";
 
-static const char cli_doc[] = "Generate a text search index from the given PATHS.";
+const char cli_doc[] = "Generate a text search index from the given PATHS.";
 
-static const char cli_args_doc[] = "PATHS...";
+const char cli_args_doc[] = "PATHS...";
 
-static const struct argp_option cli_options[] = {
+const struct argp_option cli_options[] = {
 	{
 		.name="output", .key='o', .arg="FILE",
 		.doc="Output index to FILE instead of stdout",
@@ -28,15 +35,15 @@ static const struct argp_option cli_options[] = {
 		.name="verbose", .key='v',
 		.doc="Print more verbose output to stderr",
 	},
-	{ 0 },
+	{0},
 };
 
-static error_t cli_parser(int key, char *arg, struct argp_state *state)
+error_t cli_parser(int key, char *arg, struct argp_state *state)
 {
-	struct config *cfg = state->input;
+	Config *cfg = state->input;
 	switch (key) {
 		case 'o':
-			cfg->index_path = arg;
+			cfg->index_output_path = arg;
 			break;
 
 		case 'v':
@@ -44,11 +51,12 @@ static error_t cli_parser(int key, char *arg, struct argp_state *state)
 			break;
 
 		case ARGP_KEY_ARG:
-			arrput(cfg->corpus_paths, arg);
+			stbds_arrput(cfg->corpus_root_dirs, arg);
 			break;
 
 		case ARGP_KEY_END:
-			if (state->arg_num < 1) argp_usage(state); // not enough args
+			if (state->arg_num < 1)
+				argp_usage(state); // not enough args
 			break;
 
 		default:
@@ -57,7 +65,7 @@ static error_t cli_parser(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
-static const struct argp cli = {
+const struct argp cli = {
 	.doc = cli_doc,
 	.args_doc = cli_args_doc,
 	.options = cli_options,
@@ -67,17 +75,21 @@ static const struct argp cli = {
 
 int main(int argc, char *argv[])
 {
-	struct config cfg = { .index_path = "-" };
-
+	Config cfg = { .index_output_path = "-" };
 	argp_parse(&cli, argc, argv, 0, NULL, &cfg);
-
 	fprintf(stderr, "VERBOSE = %d\n", cfg.verbose);
-	fprintf(stderr, "FILE = %s\n", cfg.index_path);
-	for (int i = 0; i < arrlen(cfg.corpus_paths); ++i) {
-		fprintf(stderr, "PATHS[%d] = %s\n", i, cfg.corpus_paths[i]);
+	fprintf(stderr, "FILE = %s\n", cfg.index_output_path);
+
+	Index index = {0};
+	for (int i = 0; i < stbds_arrlen(cfg.corpus_root_dirs); ++i) {
+		fprintf(stderr, "PATHS[%d] = %s\n", i, cfg.corpus_root_dirs[i]);
+		int ngrams = index_file(&index, cfg.corpus_root_dirs[i]);
+		fprintf(stderr, "\tNGRAMS = %d\n", ngrams);
 	}
+	index_print(stdout, index);
+	index_cleanup(&index);
 
-	arrfree(cfg.corpus_paths);
+	config_cleanup(&cfg);
 
-	return EXIT_SUCCESS;
+	return 0;
 }
