@@ -3,9 +3,23 @@
 #include <argp.h>
 #include <stb/stb_ds.h> // arr* macros
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h> // NULL
 #include <stdio.h>
+#include <stdlib.h> // exit
+
+
+#define FATAL(exitcode, format, ...) do { \
+	fprintf(stderr, "FATAL: " format "\n", __VA_ARGS__); \
+	exit((exitcode)); \
+} while (0)
+
+#define ERROR(format, ...) \
+	fprintf(stderr, "ERROR: " format "\n", __VA_ARGS__)
+
+#define INFO(format, ...) \
+	fprintf(stderr, "INFO: " format "\n", __VA_ARGS__)
 
 
 typedef struct {
@@ -22,9 +36,9 @@ void config_cleanup(Config *cfg)
 
 const char *argp_program_version = "0.1";
 
-const char cli_doc[] = "Generate a text search index from the given PATHS.";
+const char cli_doc[] = "Generate a text search index from the given DIRS.";
 
-const char cli_args_doc[] = "PATHS...";
+const char cli_args_doc[] = "DIRS...";
 
 const struct argp_option cli_options[] = {
 	{
@@ -55,8 +69,7 @@ error_t cli_parser(int key, char *arg, struct argp_state *state)
 			break;
 
 		case ARGP_KEY_END:
-			if (state->arg_num < 1)
-				argp_usage(state); // not enough args
+			if (state->arg_num < 1) argp_usage(state); // not enough args
 			break;
 
 		default:
@@ -75,21 +88,32 @@ const struct argp cli = {
 
 int main(int argc, char *argv[])
 {
+	int retcode = 0;
+
 	Config cfg = { .index_output_path = "-" };
 	argp_parse(&cli, argc, argv, 0, NULL, &cfg);
-	fprintf(stderr, "VERBOSE = %d\n", cfg.verbose);
-	fprintf(stderr, "FILE = %s\n", cfg.index_output_path);
+
+	FILE *outfile = NULL;
+	if (strcmp(cfg.index_output_path, "-") == 0) {
+		outfile = stdout;
+	} else {
+	 	outfile = fopen(cfg.index_output_path, "w+");
+		if (!outfile) {
+			FATAL(
+				errno, "Could not open file at '%s' for writing the generated index",
+				cfg.index_output_path
+			);
+		}
+	}
 
 	Index index = {0};
 	for (int i = 0; i < stbds_arrlen(cfg.corpus_root_dirs); ++i) {
-		fprintf(stderr, "PATHS[%d] = %s\n", i, cfg.corpus_root_dirs[i]);
-		int ngrams = index_file(&index, cfg.corpus_root_dirs[i]);
-		fprintf(stderr, "\tNGRAMS = %d\n", ngrams);
+		index_dir(&index, cfg.corpus_root_dirs[i]);
 	}
-	index_print(stdout, index);
+	index_print(outfile, index);
+
 	index_cleanup(&index);
-
+	fclose(outfile);
 	config_cleanup(&cfg);
-
-	return 0;
+	return retcode;
 }

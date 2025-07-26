@@ -1,6 +1,8 @@
+#include <dirent.h>
 #include <stb/stb_ds.h> // arrr* and hm* macros
 
 #include <assert.h>
+#include <errno.h>
 #include <stddef.h> // size_t, ptrdiff_t
 #include <stdio.h>
 #include <string.h> // strlen, memcpy
@@ -69,32 +71,29 @@ void index_ngram(Index *index, NGram ngram, size_t path_offset)
 	stbds_hmput(index->postings, ngram, postings);
 }
 
-ptrdiff_t index_file(Index* index, const char *path)
+int index_file(Index* index, const char *filepath)
 {
-	FILE *file = fopen(path, "r");
-	if (!file) return -1;
+	FILE *file = fopen(filepath, "r");
+	if (!file) return errno;
 
-	ptrdiff_t ngrams_read = 0;
-
-	// append path + null terminator to index
-	const size_t path_length = strlen(path);
+	// append filepath + null terminator to index
+	const size_t path_length = strlen(filepath);
 	const size_t path_offset = stbds_arraddnindex(index->paths, path_length + 1);
-	memcpy(&index->paths[path_offset], path, path_length);
+	memcpy(&index->paths[path_offset], filepath, path_length);
 	index->paths[path_offset + path_length] = '\0';
+	// TODO: compress common filepath prefixes
 
 	NGram ngram = {0};
 	char buffer[4096];
 
 	// read first ngram
 	if (!fread(buffer, sizeof(ngram), 1, file)) {
-		goto exit;
+		goto file_done;
 	} else {
-		for (size_t i = 0; i < sizeof(ngram); ++i) {
+		for (size_t i = 0; i < sizeof(ngram); ++i)
 			ngram.bytes[i] = buffer[i];
-		}
 	}
 	index_ngram(index, ngram, path_offset);
-	ngrams_read++;
 
 	// read the following ngrams by sliding an N-byte window with 1-byte steps
 	size_t chunk_length = 0;
@@ -106,11 +105,38 @@ ptrdiff_t index_file(Index* index, const char *path)
 			}
 			ngram.bytes[sizeof(ngram) - 1] = byte;
 			index_ngram(index, ngram, path_offset);
-			ngrams_read++;
 		}
 	}
 
-exit:
+file_done:
 	fclose(file);
-	return ngrams_read;
+	return 0;
+}
+
+
+int index_dir(Index *index, const char *dirpath)
+{
+	int error = 0;
+
+	DIR *dir = opendir(dirpath);
+	if (!dir) return errno;
+
+	char *path_buffer = NULL;
+	const size_t dirpath_length = strlen(dirpath);
+	stbds_arrsetlen(path_buffer, dirpath_length);
+	memcpy(&path_buffer[0], dirpath, dirpath_length);
+	while (path_buffer[stbds_arrlen(path_buffer) - 1] == '/') {
+		stbds_arrpop(path_buffer);
+	}
+
+	printf("%s\n", dirpath);
+	errno = 0;
+	for (struct dirent *entry = NULL; (entry = readdir(dir)); errno = 0) {
+		printf("\t%d %s\n", entry->d_type, entry->d_name);
+	}
+	if (errno) error = errno;
+
+	stbds_arrfree(path_buffer);
+	closedir(dir);
+	return error;
 }
