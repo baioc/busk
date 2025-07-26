@@ -7,17 +7,20 @@
 BUILDDIR = ./build
 RELEASE = 0
 
+# https://developers.redhat.com/blog/2018/03/21/compiler-and-linker-flags-gcc
+# https://best.openssf.org/Compiler-Hardening-Guides/Compiler-Options-Hardening-Guide-for-C-and-C++.html
+
 CC = gcc
-CFLAGS = -std=gnu11 -fno-strict-aliasing \
-	-Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers \
-	-Wformat-security -Werror=format-security
-LDFLAGS =
+CFLAGS = -std=gnu11 -fno-strict-aliasing -fno-strict-overflow -pipe \
+	-Wall -Wextra -Wbidi-chars=any -Werror=format-security \
+	-Wno-unused-parameter -Wno-missing-field-initializers
+LDFLAGS = -Wl,-z,defs
 LDLIBS =
 
 ifeq ($(RELEASE), 1)
-	CFLAGS += -O2 -flto -DNDEBUG \
-		-D_FORTIFY_SOURCE=2 -fPIE -fstack-protector-strong -fcf-protection
-	LDFLAGS += -s -flto -pie -Wl,-z,relro,-z,now
+	CFLAGS += -O2 -ftree-loop-vectorize -flto -DNDEBUG \
+		-D_FORTIFY_SOURCE=2 -fstack-clash-protection -fPIE -fstack-protector-strong -fcf-protection
+	LDFLAGS += -Wl,-O2 -s -Wl,-z,noexecstack -pie -Wl,-z,relro,-z,now
 else
 	CFLAGS += -O0 -g \
 		-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
