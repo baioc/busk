@@ -7,24 +7,32 @@
 BUILDDIR = ./build
 RELEASE = 0
 
+INDEX_NGRAM_SIZE = 3
+LOG_TIME_SUBSEC = 3
+LOG_INDENT_SIZE = 4
+
 # https://developers.redhat.com/blog/2018/03/21/compiler-and-linker-flags-gcc
 # https://best.openssf.org/Compiler-Hardening-Guides/Compiler-Options-Hardening-Guide-for-C-and-C++.html
 
 CC = gcc
-CFLAGS = -std=gnu11 -fno-strict-aliasing -fno-strict-overflow -pipe \
+CFLAGS = -std=gnu11 -pipe -fvisibility=hidden \
 	-Wall -Wextra -Wbidi-chars=any -Werror=format-security \
-	-Wno-unused-parameter -Wno-missing-field-initializers
+	-Wno-unused-parameter -Wno-missing-field-initializers \
+	-DINDEX_NGRAM_SIZE=$(INDEX_NGRAM_SIZE) \
+	-DLOG_TIME_SUBSEC=$(LOG_TIME_SUBSEC) -DLOG_INDENT_SIZE=$(LOG_INDENT_SIZE)
 LDFLAGS = -Wl,-z,defs
 LDLIBS =
 
 ifeq ($(RELEASE), 1)
 	CFLAGS += -O2 -ftree-loop-vectorize -flto -DNDEBUG \
 		-D_FORTIFY_SOURCE=2 -fstack-clash-protection -fPIE -fstack-protector-strong -fcf-protection
-	LDFLAGS += -Wl,-O2 -s -Wl,-z,noexecstack -pie -Wl,-z,relro,-z,now
+	LDFLAGS += -Wl,-O2 -flto -s -Wl,-z,noexecstack -pie -Wl,-z,relro,-z,now
 else
 	CFLAGS += -O0 -g \
 		-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
 endif
+
+CFLAGS += -fno-strict-aliasing -fno-strict-overflow
 
 
 ## Dependencies
@@ -55,6 +63,16 @@ test: $(BUILDDIR)/mk-index
 
 .SUFFIXES:
 
-$(BUILDDIR)/mk-index: src/mk-index.c src/index.c
+$(BUILDDIR)/%.o: src/%.c
 	mkdir -p $(BUILDDIR)
-	$(CC) $(CFLAGS) $(LDFLAGS) $< $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR)/%: $(BUILDDIR)/%.o
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+# ^ patterns adapted from defaults (as seen with `make -p`)
+
+$(BUILDDIR)/mk-index: src/mk-index.c src/index.c $(BUILDDIR)/log.o
+	$(CC) $(CFLAGS) $(LDFLAGS) $< $(filter %.o, $^) $(LDLIBS) -o $@
+
+$(BUILDDIR)/log.o: src/log.c src/log.h

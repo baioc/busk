@@ -1,25 +1,16 @@
 #include "index.c"
 
+#undef LOG_NAME
+#define LOG_NAME "search.mk-index"
+#include "log.h"
+
 #include <argp.h>
 #include <stb/stb_ds.h> // arr* macros
 
-#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h> // NULL
-#include <stdio.h>
-#include <stdlib.h> // exit
-
-
-#define FATAL(exitcode, format, ...) do { \
-	fprintf(stderr, "FATAL: " format "\n", __VA_ARGS__); \
-	exit((exitcode)); \
-} while (0)
-
-#define ERROR(format, ...) \
-	fprintf(stderr, "ERROR: " format "\n", __VA_ARGS__)
-
-#define INFO(format, ...) \
-	fprintf(stderr, "INFO: " format "\n", __VA_ARGS__)
+#include <stdio.h> // fopen
+#include <string.h> // strcmp
 
 
 typedef struct {
@@ -28,40 +19,40 @@ typedef struct {
 	bool verbose;
 } Config;
 
-void config_cleanup(Config *cfg)
+static void config_cleanup(Config *cfg)
 {
 	stbds_arrfree(cfg->corpus_root_dirs);
 }
 
 
-const char *argp_program_version = "0.1";
+const char *argp_program_version = "0.0.0";
 
-const char cli_doc[] = "Generate a text search index from the given DIRS.";
+static const char cli_doc[] = "Generate a text search index from the given DIRs.";
 
-const char cli_args_doc[] = "DIRS...";
+static const char cli_args_doc[] = "<DIR>...";
 
-const struct argp_option cli_options[] = {
-	{
-		.name="output", .key='o', .arg="FILE",
-		.doc="Output index to FILE instead of stdout",
-	},
+static const struct argp_option cli_options[] = {
 	{
 		.name="verbose", .key='v',
 		.doc="Print more verbose output to stderr",
 	},
+	{
+		.name="output", .key='o', .arg="FILE",
+		.doc="Output index to FILE instead of stdout",
+	},
 	{0},
 };
 
-error_t cli_parser(int key, char *arg, struct argp_state *state)
+static error_t cli_parser(int key, char *arg, struct argp_state *state)
 {
 	Config *cfg = state->input;
 	switch (key) {
-		case 'o':
-			cfg->index_output_path = arg;
-			break;
-
 		case 'v':
 			cfg->verbose = true;
+			break;
+
+		case 'o':
+			cfg->index_output_path = arg;
 			break;
 
 		case ARGP_KEY_ARG:
@@ -69,7 +60,7 @@ error_t cli_parser(int key, char *arg, struct argp_state *state)
 			break;
 
 		case ARGP_KEY_END:
-			if (state->arg_num < 1) argp_usage(state); // not enough args
+			if (state->arg_num < 1) argp_usage(state); // no DIRs given
 			break;
 
 		default:
@@ -78,7 +69,7 @@ error_t cli_parser(int key, char *arg, struct argp_state *state)
 	return 0;
 }
 
-const struct argp cli = {
+static const struct argp cli = {
 	.doc = cli_doc,
 	.args_doc = cli_args_doc,
 	.options = cli_options,
@@ -93,24 +84,23 @@ int main(int argc, char *argv[])
 	Config cfg = { .index_output_path = "-" };
 	argp_parse(&cli, argc, argv, 0, NULL, &cfg);
 
+	if (cfg.verbose) logger.level = LOG_LEVEL_DEBUG;
+
 	FILE *outfile = NULL;
 	if (strcmp(cfg.index_output_path, "-") == 0) {
 		outfile = stdout;
 	} else {
-	 	outfile = fopen(cfg.index_output_path, "w+");
-		if (!outfile) {
-			FATAL(
-				errno, "Could not open file at '%s' for writing the generated index",
-				cfg.index_output_path
-			);
-		}
+		outfile = fopen(cfg.index_output_path, "w+");
+		if (!outfile)
+			LOG_FATAL("Could not open output file at '%s'", cfg.index_output_path);
 	}
 
 	Index index = {0};
 	for (int i = 0; i < stbds_arrlen(cfg.corpus_root_dirs); ++i) {
-		index_dir(&index, cfg.corpus_root_dirs[i]);
+		const char *dir = cfg.corpus_root_dirs[i];
+		index_dir(&index, dir);
 	}
-	index_print(outfile, index);
+	index_save(index, outfile);
 
 	index_cleanup(&index);
 	fclose(outfile);
