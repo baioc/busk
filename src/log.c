@@ -1,5 +1,6 @@
 #include "log.h"
 
+#include <assert.h>
 #include <stdarg.h> // va_list
 #include <stdio.h> // stderr
 #include <stdlib.h> // exit
@@ -16,6 +17,12 @@
 #	define LOG_INDENT_SIZE 4
 #elif LOG_INDENT_SIZE < 1
 #	error "LOG_INDENT_SIZE must be strictly positive"
+#endif
+
+#if !defined(LOG_BUFFER_SIZE)
+#	define LOG_BUFFER_SIZE 30000
+#elif LOG_BUFFER_SIZE < 81
+#	error "LOG_BUFFER_SIZE must be at least 81"
 #endif
 
 #define STRINGIFY_(X) #X
@@ -94,7 +101,21 @@ static void log_va(
 		fprintf(log.file, " ");
 	}
 
-	vfprintf(log.file, format, vargs);
+	static _Thread_local char buffer[LOG_BUFFER_SIZE];
+	const int msglen = vsnprintf(buffer, sizeof(buffer), format, vargs);
+	if (msglen < 0 || (size_t)msglen >= sizeof(buffer)) {
+		fprintf(log.file, "[ERRFMT]");
+	} else {
+		// filter possibly dangerous chars before printing
+		// NOTE: this means that we can only log ASCII
+		for (int i = 0; i < msglen; ++i) {
+			const char c = buffer[i];
+			if ((c >= ' ' && c <= '~') || c == '\t') continue;
+			buffer[i] = '?';
+		}
+		assert(buffer[msglen] == '\0');
+		fprintf(log.file, "%s", buffer);
+	}
 
 	fprintf(log.file, "\n");
 	fflush(log.file);

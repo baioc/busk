@@ -8,8 +8,7 @@ BUILDDIR = ./build
 RELEASE = 0
 
 INDEX_NGRAM_SIZE = 3
-LOG_TIME_SUBSEC = 3
-LOG_INDENT_SIZE = 4
+LOG_BUFFER_SIZE = 4000
 
 # https://developers.redhat.com/blog/2018/03/21/compiler-and-linker-flags-gcc
 # https://best.openssf.org/Compiler-Hardening-Guides/Compiler-Options-Hardening-Guide-for-C-and-C++.html
@@ -18,8 +17,7 @@ CC = gcc
 CFLAGS = -std=gnu11 -pipe -fvisibility=hidden \
 	-Wall -Wextra -Wbidi-chars=any -Werror=format-security \
 	-Wno-unused-parameter -Wno-missing-field-initializers \
-	-DINDEX_NGRAM_SIZE=$(INDEX_NGRAM_SIZE) \
-	-DLOG_TIME_SUBSEC=$(LOG_TIME_SUBSEC) -DLOG_INDENT_SIZE=$(LOG_INDENT_SIZE)
+	-DINDEX_NGRAM_SIZE=$(INDEX_NGRAM_SIZE) -DLOG_BUFFER_SIZE=$(LOG_BUFFER_SIZE)
 LDFLAGS = -Wl,-z,defs
 LDLIBS =
 
