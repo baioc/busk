@@ -5,9 +5,11 @@
 #include <stb/stb_ds.h> // arrr* and hm* macros
 #include <sys/stat.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <stddef.h> // NULL, size_t
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h> // strlen, memcpy, strcmp
 
 
@@ -17,7 +19,7 @@
 #	error "INDEX_NGRAM_SIZE must be at least 2"
 #endif
 
-typedef struct NGram {
+typedef struct {
 	char bytes[INDEX_NGRAM_SIZE];
 } NGram;
 
@@ -31,14 +33,14 @@ typedef struct {
 	Posting *value;
 } PostingMapping;
 
-typedef struct Index {
+typedef struct {
 	char *paths; // Big array with all paths, concatenated, separated by '\0'
 	PostingMapping *postings; // map of NGram -> Set(Posting)
 } Index;
 
 void index_cleanup(Index *index)
 {
-	for (int i = 0; i < stbds_hmlen(index->postings); ++i) {
+	for (size_t i = 0; i < stbds_hmlenu(index->postings); ++i) {
 		Posting *postings = index->postings[i].value;
 		stbds_hmfree(postings);
 	}
@@ -47,32 +49,60 @@ void index_cleanup(Index *index)
 }
 
 
-// TODO: proper binary save + load
-void index_save(Index index, FILE *stream)
-{
-	for (int i = 0; i < stbds_hmlen(index.postings); ++i) {
-		NGram ngram = index.postings[i].key;
-		fprintf(stream, "\"");
-		for (size_t j = 0; j < sizeof(ngram); ++j) {
-			char byte = ngram.bytes[j];
-			if (byte == '"')
-				fprintf(stream, "\\\"");
-			else if (byte >= ' ' && byte <= '~')
-				fprintf(stream, "%c", byte);
-			else
-				fprintf(stream, "\\x%x", byte);
-		}
-		fprintf(stream, "\"");
+// binary file format:
+//
+// - header:
+//   - 8-byte byte sequence: file magic
+//   - 8-byte LE u64: size of ngram index, in number of entries
+//   - 8-byte little endian u64: size of path list, in bytes
+//
+// - paths:
+//   - variable-length C strings, concatenated, each terminated by a zero byte
+//
+// - index:
+//   - sequence of variable-length entries, each with the following format:
+//     - 4-byte LE u32: size of posting list, in number of items
+//     - N-byte ngram: first byte is ngram[0], second is ngram[1], etc
+//     - padding bytes (value = 0xFF) up to a multiple of 4
+//     - sequence of LE u64: posting list, each item an offset into paths
 
+void index_save(Index index, FILE *file)
+{
+	const unsigned char magic[] = {
+		'\xFF', // non-ascii byte to avoid confusion with a text file
+		'B', 'U', 'S', 'K', // make it read nicely in a hex dump
+		'0', '1', // placeholder, may become version number in the future
+		'\x1A', // ascii "Ctrl-Z", treated as end of file in DOS
+	};
+	static_assert(sizeof(magic) == 8, "File magic should be 8 bytes");
+	const uint64_t ngrams = stbds_hmlenu(index.postings);
+	const uint64_t pathslen = stbds_arrlenu(index.paths);
+
+	fwrite(magic, 8, 1, file);
+	for (int i = 0; i < 8; ++i) fputc(ngrams & (0x00FFull << (i*8)), file);
+	for (int i = 0; i < 8; ++i) fputc(pathslen & (0x00FFull << (i*8)), file);
+
+	fwrite(index.paths, 1, pathslen, file);
+
+	for (uint64_t i = 0; i < ngrams; ++i) {
+		const NGram ngram = index.postings[i].key;
 		const Posting *postings = index.postings[i].value;
-		fprintf(stream, " -> #{ ");
-		for (int j = 0; j < stbds_hmlen(postings); ++j) {
-			uint64_t path_offset = postings[j].key;
-			fprintf(stream, "\"%s\" ", &index.paths[path_offset]);
+
+		const uint32_t postinglen = stbds_hmlen(postings);
+		for (int i = 0; i < 4; ++i) fputc(postinglen & (0x00FFul << (i*8)), file);
+
+		fwrite(&ngram, sizeof(ngram), 1, file);
+		const int padding = 4 - sizeof(ngram) % 4;
+		for (int i = 0; i < padding; ++i) fputc('\xFF', file);
+
+		for (uint32_t i = 0; i < postinglen; ++i) {
+			const uint64_t offset = postings[i].key;
+			for (int i = 0; i < 8; ++i) fputc(offset & (0x00FFull << (i*8)), file);
 		}
-		fprintf(stream, "}\n");
 	}
 }
+
+// TODO: void index_load(Index *index, FILE *file)
 
 
 void index_ngram(Index *index, NGram ngram, uint64_t path_offset)
@@ -95,7 +125,7 @@ int64_t index_file(Index* index, const char *filepath)
 	const size_t path_offset = stbds_arraddnindex(index->paths, path_length + 1);
 	memcpy(&index->paths[path_offset], filepath, path_length);
 	index->paths[path_offset + path_length] = '\0';
-	// TODO: compress common filepath prefixes
+	// TODO: compress common filepath prefixes (and dedup)
 
 	NGram ngram = {0};
 	char buffer[4096];
