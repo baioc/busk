@@ -1,7 +1,6 @@
 #include "log.h"
 
 #include <assert.h>
-#include <stdarg.h> // va_list
 #include <stdio.h> // stderr
 #include <stdlib.h> // exit
 #include <time.h>
@@ -29,15 +28,15 @@
 #define STRINGIFY(X) STRINGIFY_(X)
 
 
-_Thread_local LogConfig logger = {0};
+_Thread_local struct LogConfig logger = {0};
 
 
 static void log_va(
-	const char *logname, LogLevel level,
+	const char *logname, enum LogLevel level,
 	const char *srcfile, int srcline,
 	const char *format, va_list vargs
 ) {
-	LogConfig log = logger;
+	struct LogConfig log = logger;
 	if (level < log.level) return;
 	if (!log.file) log.file = stderr;
 
@@ -124,12 +123,17 @@ static void log_va(
 }
 
 void log_impl(
-	const char *logname, LogLevel level,
+	const char *logname, enum LogLevel level,
 	const char *srcfile, int srcline,
 	const char *format, ...
 ) {
+	const struct LogConfig log = logger;
 	va_list va;
 	va_start(va, format);
-	log_va(logname, level, srcfile, srcline, format, va);
+	if (!log.function) {
+		log_va(logname, level, srcfile, srcline, format, va);
+	} else {
+		log.function(log.fnarg, logname, level, srcfile, srcline, format, va);
+	}
 	va_end(va);
 }

@@ -1,33 +1,49 @@
 #ifndef INCLUDE_LOG_H
 #define INCLUDE_LOG_H
 
+#include <stdarg.h> // va_list
 #include <stddef.h> // NULL
 #include <stdio.h> // FILE
 
-typedef enum LogLevel {
+enum LogLevel {
 	LOG_LEVEL_TRACE = -2,
 	LOG_LEVEL_DEBUG = -1,
 	LOG_LEVEL_INFO = 0,
 	LOG_LEVEL_WARN = 1,
 	LOG_LEVEL_ERROR = 2,
-	LOG_LEVEL_FATAL = 3,
-} LogLevel;
+	LOG_LEVEL_FATAL = 3, // Causes program to exit after logging.
+};
 
-typedef struct LogConfig {
-	LogLevel level;
+typedef void (*LogFunction)(
+	void *fnarg,
+	const char *logname, enum LogLevel level,
+	const char *srcfile, int srcline,
+	const char *format, va_list varargs
+);
+
+// Logging configuration, initialize with `{0}` for sane defaults.
+struct LogConfig {
+	// basic logging
+	enum LogLevel level;
 	FILE *file;
+
+	// nice for recursion
 	unsigned indent;
-} LogConfig;
+
+	// set to override default behaviour
+	LogFunction function;
+	void *fnarg;
+};
 
 // Per-thread logging configuration.
-extern _Thread_local LogConfig logger;
+extern _Thread_local struct LogConfig logger;
 
 #ifdef __GNUC__
 __attribute__((format(printf, 5, 6)))
 #endif
 // Logging procedure. Use macros instead of calling this directly.
 extern void log_impl(
-	const char *logname, LogLevel level,
+	const char *logname, enum LogLevel level,
 	const char *srcfile, int srcline,
 	const char *format, ...
 );
