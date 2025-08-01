@@ -1,16 +1,18 @@
-#include "index.c"
-
-#undef LOG_NAME
-#define LOG_NAME "search.mk-index"
+#include "index.h"
+#define LOG_NAME "busk.mk-index"
 #include "log.h"
 
 #include <argp.h>
+#include <dirent.h>
 #include <stb/stb_ds.h> // arr* macros
+#include <sys/stat.h>
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h> // NULL
+#include <stdint.h>
 #include <stdio.h> // fopen
-#include <string.h> // strcmp
+#include <string.h> // strcmp, strlen, memcpy
 
 
 typedef struct {
@@ -23,7 +25,6 @@ static void config_cleanup(Config *cfg)
 {
 	stbds_arrfree(cfg->corpus_root_dirs);
 }
-
 
 const char *argp_program_version = "0.0.0";
 
@@ -60,7 +61,7 @@ static error_t cli_parser(int key, char *arg, struct argp_state *state)
 			break;
 
 		case ARGP_KEY_END:
-			if (state->arg_num < 1) argp_usage(state); // no DIRs given
+			if (state->arg_num < 1) argp_usage(state); // no sources given
 			break;
 
 		default:
@@ -77,6 +78,87 @@ static const struct argp cli = {
 };
 
 
+static int64_t index_dir_rec(struct Index *index, char **pathbufp)
+{
+	char *pathbuf = *pathbufp;
+
+	DIR *dir = opendir(pathbuf);
+	if (!dir) return -errno;
+
+	int64_t file_count = 0;
+
+	LOG_INFOF("Indexing directory '%s' ...", pathbuf);
+	++logger.indent;
+	errno = 0;
+	for (struct dirent *entry = NULL; (entry = readdir(dir)); errno = 0) {
+		const char *basename = entry->d_name;
+		if (strcmp(basename, ".") == 0) continue;
+		if (strcmp(basename, "..") == 0) continue;
+
+		// assemble null-terminated path
+		const size_t oldlen = stbds_arrlen(pathbuf);
+		pathbuf[oldlen - 1] = '/'; // <- no longer null-terminated
+		const size_t basename_length = strlen(basename);
+		const size_t basename_offset = stbds_arraddnindex(pathbuf, basename_length);
+		memcpy(&pathbuf[basename_offset], basename, basename_length);
+		stbds_arrput(pathbuf, '\0'); // <- OK, back to null-terminated
+
+		// TODO: handle cycles induced by symlinks (maybe using inodes?)
+		struct stat fstat = {0};
+		if (stat(pathbuf, &fstat) != 0) {
+			LOG_ERRORF("Could not stat file at '%s' (errno = %d)", pathbuf, errno);
+		} else if (S_ISDIR(fstat.st_mode)) {
+			const int64_t result = index_dir_rec(index, &pathbuf);
+			if (result < 0) {
+				LOG_ERRORF("Failed to index directory at '%s' (errno = %d)", pathbuf, (int)-result);
+			} else {
+				file_count += result;
+			}
+		} else {
+			FILE *file = fopen(pathbuf, "r");
+			if (!file) {
+				LOG_ERRORF("Failed to index file at '%s' (errno = %d)", pathbuf, errno);
+			} else {
+				index_file(index, file, pathbuf);
+				++file_count;
+				LOG_INFOF("Indexed file '%s'", pathbuf);
+			}
+		}
+
+		// restore old dir path
+		stbds_arrsetlen(pathbuf, oldlen);
+		pathbuf[oldlen - 1] = '\0';
+	}
+	if (errno) LOG_ERRORF("Error while reading directory '%s' (errno = %d)", pathbuf, errno);
+	--logger.indent;
+
+	closedir(dir);
+	*pathbufp = pathbuf;
+	return file_count;
+}
+
+static int64_t index_dir(struct Index *index, const char *dirpath)
+{
+	// we'll use a single buffer to build full paths, pushing and popping
+	// suffixes like in a stack, and starting with the root directory
+	// (just note that this buffer is not null-terminated)
+	char *pathbuf = NULL;
+
+	const size_t dirpath_length = strlen(dirpath);
+	const size_t dirpath_offset = stbds_arraddnindex(pathbuf, dirpath_length);
+	memcpy(&pathbuf[dirpath_offset], dirpath, dirpath_length);
+	while (pathbuf[stbds_arrlen(pathbuf) - 1] == '/') {
+		stbds_arrpop(pathbuf);
+	}
+	stbds_arrpush(pathbuf, '\0');
+
+	const int64_t fcount = index_dir_rec(index, &pathbuf);
+
+	stbds_arrfree(pathbuf);
+	return fcount;
+}
+
+
 int main(int argc, char *argv[])
 {
 	int retcode = 0;
@@ -91,16 +173,18 @@ int main(int argc, char *argv[])
 		outfile = stdout;
 	} else {
 		outfile = fopen(cfg.index_output_path, "w+");
-		if (!outfile)
-			LOG_FATAL("Could not open output file at '%s'", cfg.index_output_path);
+		if (!outfile) LOG_FATALF("Could not open output file at '%s'", cfg.index_output_path);
 	}
 
-	Index index = {0};
+	struct Index index = {0};
 	for (int i = 0; i < stbds_arrlen(cfg.corpus_root_dirs); ++i) {
+		// TODO: process dirs OR individual files
 		const char *dir = cfg.corpus_root_dirs[i];
 		index_dir(&index, dir);
 	}
-	index_save(index, outfile);
+
+	const int64_t written = index_save(index, outfile);
+	if (written < 0) LOG_FATALF("Error when saving index to output file: %ld", written);
 
 	index_cleanup(&index);
 	fclose(outfile);

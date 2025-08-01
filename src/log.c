@@ -1,27 +1,28 @@
 #include "log.h"
 
 #include <assert.h>
-#include <stdio.h> // stderr
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h> // exit
 #include <time.h>
 
 
-#if !defined(LOG_TIME_SUBSEC)
-#	define LOG_TIME_SUBSEC 3
+#ifndef LOG_TIME_SUBSEC
+#define LOG_TIME_SUBSEC 3
 #elif LOG_TIME_SUBSEC > 9
-#	error "LOG_TIME_SUBSEC can't be greater than 9"
+#error "LOG_TIME_SUBSEC can't be greater than 9"
 #endif
 
-#if !defined(LOG_INDENT_SIZE)
-#	define LOG_INDENT_SIZE 4
+#ifndef LOG_INDENT_SIZE
+#define LOG_INDENT_SIZE 4
 #elif LOG_INDENT_SIZE < 1
-#	error "LOG_INDENT_SIZE must be strictly positive"
+#error "LOG_INDENT_SIZE must be strictly positive"
 #endif
 
-#if !defined(LOG_BUFFER_SIZE)
-#	define LOG_BUFFER_SIZE 30000
+#ifndef LOG_BUFFER_SIZE
+#define LOG_BUFFER_SIZE 30000
 #elif LOG_BUFFER_SIZE < 81
-#	error "LOG_BUFFER_SIZE must be at least 81"
+#error "LOG_BUFFER_SIZE must be at least 81"
 #endif
 
 #define STRINGIFY_(X) #X
@@ -50,24 +51,12 @@ static void log_va(
 
 	const char *level_str;
 	switch (level) {
-		case LOG_LEVEL_TRACE:
-			level_str = "TRACE";
-			break;
-		case LOG_LEVEL_DEBUG:
-			level_str = "DEBUG";
-			break;
-		case LOG_LEVEL_INFO:
-			level_str = "INFO";
-			break;
-		case LOG_LEVEL_WARN:
-			level_str = "WARN";
-			break;
-		case LOG_LEVEL_ERROR:
-			level_str = "ERROR";
-			break;
-		case LOG_LEVEL_FATAL:
-			level_str = "FATAL";
-			break;
+		case LOG_LEVEL_TRACE: level_str = "TRACE"; break;
+		case LOG_LEVEL_DEBUG: level_str = "DEBUG"; break;
+		case LOG_LEVEL_INFO: level_str = "INFO"; break;
+		case LOG_LEVEL_WARN: level_str = "WARN"; break;
+		case LOG_LEVEL_ERROR: level_str = "ERROR"; break;
+		case LOG_LEVEL_FATAL: level_str = "FATAL"; break;
 	}
 
 	// LOGGER_NAME [TIMESTAMP] LOG_LEVEL (SRC_FILE:SRC_LINE) - FORMATTED_MESSAGE
@@ -133,7 +122,7 @@ void log_impl(
 	if (!log.function) {
 		log_va(logname, level, srcfile, srcline, format, va);
 	} else {
-		log.function(log.fnarg, logname, level, srcfile, srcline, format, va);
+		log.function(log.arg, logname, level, srcfile, srcline, format, va);
 	}
 	va_end(va);
 }

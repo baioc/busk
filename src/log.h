@@ -1,8 +1,7 @@
 #ifndef INCLUDE_LOG_H
 #define INCLUDE_LOG_H
 
-#include <stdarg.h> // va_list
-#include <stddef.h> // NULL
+#include <stdarg.h>
 #include <stdio.h> // FILE
 
 enum LogLevel {
@@ -15,24 +14,19 @@ enum LogLevel {
 };
 
 typedef void (*LogFunction)(
-	void *fnarg,
+	void *arg,
 	const char *logname, enum LogLevel level,
 	const char *srcfile, int srcline,
 	const char *format, va_list varargs
 );
 
-// Logging configuration, initialize with `{0}` for sane defaults.
+// Logging configuration. Initialize with `{0}` for sane defaults.
 struct LogConfig {
-	// basic logging
-	enum LogLevel level;
-	FILE *file;
-
-	// nice for recursion
-	unsigned indent;
-
-	// set to override default behaviour
-	LogFunction function;
-	void *fnarg;
+	enum LogLevel level; // Minimum level where logs will actually be written.
+	FILE *file; // Log file ready for appending. NULL means write to stderr.
+	unsigned indent; // nice for recursion
+	LogFunction function; // Set to override default logging behaviour.
+	void *arg; // Always forwarded to custom logging function.
 };
 
 // Per-thread logging configuration.
@@ -49,49 +43,62 @@ extern void log_impl(
 );
 
 #ifndef LOG_NAME
-#	define LOG_NAME NULL
+#include <stddef.h>
+#define LOG_NAME NULL
 #endif
 
-#define LOG_TRACE(format, ...) \
+#define LOG_TRACEF(format, ...) \
 	log_impl( \
 		LOG_NAME, LOG_LEVEL_TRACE, \
 		__FILE__, __LINE__, \
-		format __VA_OPT__(,) __VA_ARGS__ \
+		(format), __VA_ARGS__ \
 	)
 
-#define LOG_DEBUG(format, ...) \
+#define LOG_TRACE(msg) LOG_TRACEF("%s", (msg))
+
+#define LOG_DEBUGF(format, ...) \
 	log_impl( \
 		LOG_NAME, LOG_LEVEL_DEBUG, \
 		__FILE__, __LINE__, \
-		format __VA_OPT__(,) __VA_ARGS__ \
+		(format), __VA_ARGS__ \
 	)
 
-#define LOG_INFO(format, ...) \
+#define LOG_DEBUG(msg) LOG_DEBUGF("%s", (msg))
+
+#define LOG_INFOF(format, ...) \
 	log_impl( \
 		LOG_NAME, LOG_LEVEL_INFO, \
 		__FILE__, __LINE__, \
-		format __VA_OPT__(,) __VA_ARGS__ \
+		(format), __VA_ARGS__ \
 	)
 
-#define LOG_WARN(format, ...) \
+#define LOG_INFO(msg) LOG_INFOF("%s", (msg))
+
+#define LOG_WARNF(format, ...) \
 	log_impl( \
 		LOG_NAME, LOG_LEVEL_WARN, \
 		__FILE__, __LINE__, \
-		format __VA_OPT__(,) __VA_ARGS__ \
+		(format), __VA_ARGS__ \
 	)
 
-#define LOG_ERROR(format, ...) \
+#define LOG_WARN(msg) LOG_WARNF("%s", (msg))
+
+#define LOG_ERRORF(format, ...) \
 	log_impl( \
 		LOG_NAME, LOG_LEVEL_ERROR, \
 		__FILE__, __LINE__, \
-		format __VA_OPT__(,) __VA_ARGS__ \
+		(format), __VA_ARGS__ \
 	)
 
-#define LOG_FATAL(format, ...) \
+#define LOG_ERROR(msg) LOG_ERRORF("%s", (msg))
+
+#define LOG_FATALF(format, ...) \
 	log_impl( \
 		LOG_NAME, LOG_LEVEL_FATAL, \
 		__FILE__, __LINE__, \
-		format __VA_OPT__(,) __VA_ARGS__ \
+		(format), __VA_ARGS__ \
 	)
+
+#define LOG_FATAL(msg) LOG_FATALF("%s", (msg))
 
 #endif // INCLUDE_LOG_H

@@ -48,13 +48,15 @@ LDLIBS += $(shell pkg-config --libs-only-l stb)
 
 .PHONY: build clean test
 
-build: $(BUILDDIR)/mk-index
+build: $(BUILDDIR)/mk-index $(BUILDDIR)/search
 
 clean:
 	- rm -f $(BUILDDIR)/*
 
-test: $(BUILDDIR)/mk-index
-	$(BUILDDIR)/mk-index --help
+# TODO: actual tests
+test: $(BUILDDIR)/mk-index $(BUILDDIR)/search
+	$(BUILDDIR)/mk-index -v -o $(BUILDDIR)/index.bin src///
+	$(BUILDDIR)/search
 
 
 ## Rules
@@ -70,7 +72,12 @@ $(BUILDDIR)/%: $(BUILDDIR)/%.o
 
 # ^ patterns adapted from defaults (as seen with `make -p`)
 
-$(BUILDDIR)/mk-index: src/mk-index.c src/index.c $(BUILDDIR)/log.o
+$(BUILDDIR)/mk-index: src/mk-index.c $(BUILDDIR)/index.o $(BUILDDIR)/log.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(filter %.o, $^) $(LDLIBS) -o $@
+
+$(BUILDDIR)/search: src/search.c $(BUILDDIR)/index.o $(BUILDDIR)/log.o
+	$(CC) $(CFLAGS) $(LDFLAGS) $< $(filter %.o, $^) $(LDLIBS) -o $@
+
+$(BUILDDIR)/index.o: src/index.c src/index.h
 
 $(BUILDDIR)/log.o: src/log.c src/log.h

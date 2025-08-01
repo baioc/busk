@@ -7,7 +7,6 @@ struct Header {
 struct Entry {
     le u32 postlen;
     char ngram[3];
-    padding[1];
     le u64 offsets[postlen];
 };
 
