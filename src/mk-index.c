@@ -26,11 +26,11 @@ static void config_cleanup(Config *cfg)
 	stbds_arrfree(cfg->corpus_root_dirs);
 }
 
-const char *argp_program_version = "0.0.0";
+const char *argp_program_version = "0.1.0";
 
-static const char cli_doc[] = "Generate a text search index from the given DIRs.";
+static const char cli_doc[] = "Generate a text search index from the given FILE/DIRs.";
 
-static const char cli_args_doc[] = "<DIR>...";
+static const char cli_args_doc[] = "<FILE/DIR>...";
 
 static const struct argp_option cli_options[] = {
 	{
@@ -38,8 +38,8 @@ static const struct argp_option cli_options[] = {
 		.doc="Print more verbose output to stderr",
 	},
 	{
-		.name="output", .key='o', .arg="FILE",
-		.doc="Output index to FILE instead of stdout",
+		.name="output", .key='o', .arg="OUTPUT",
+		.doc="Output index to OUTPUT instead of stdout",
 	},
 	{0},
 };
@@ -103,7 +103,6 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 		memcpy(&pathbuf[basename_offset], basename, basename_length);
 		stbds_arrput(pathbuf, '\0'); // <- OK, back to null-terminated
 
-		// TODO: handle cycles induced by symlinks (maybe using inodes?)
 		struct stat fstat = {0};
 		if (stat(pathbuf, &fstat) != 0) {
 			LOG_ERRORF("Could not stat file at '%s' (errno = %d)", pathbuf, errno);
@@ -178,9 +177,22 @@ int main(int argc, char *argv[])
 
 	struct Index index = {0};
 	for (int i = 0; i < stbds_arrlen(cfg.corpus_root_dirs); ++i) {
-		// TODO: process dirs OR individual files
-		const char *dir = cfg.corpus_root_dirs[i];
-		index_dir(&index, dir);
+		const char *path = cfg.corpus_root_dirs[i];
+		struct stat fstat = {0};
+		if (stat(path, &fstat) != 0) {
+			LOG_FATALF("Could not open path at '%s'", path);
+		} else if (S_ISDIR(fstat.st_mode)) {
+			index_dir(&index, path);
+			LOG_INFOF("Indexed directory '%s'", path);
+		} else {
+			FILE *file = fopen(path, "r");
+			if (!file) {
+				LOG_FATALF("Could not open file '%s'", path);
+			} else {
+				index_file(&index, file, path);
+				LOG_INFOF("Indexed file '%s'", path);
+			}
+		}
 	}
 
 	const int64_t written = index_save(index, outfile);

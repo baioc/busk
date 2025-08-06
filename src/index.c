@@ -109,7 +109,7 @@ int64_t index_save(struct Index index, FILE *outfile)
 	}
 
 	const int64_t error = written_bytes - expected_bytes;
-	return error ? error : written_bytes ;
+	return error ? error : written_bytes;
 }
 
 

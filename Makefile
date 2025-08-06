@@ -55,7 +55,7 @@ clean:
 
 # TODO: actual tests
 test: $(BUILDDIR)/mk-index $(BUILDDIR)/search
-	$(BUILDDIR)/mk-index -v -o $(BUILDDIR)/index.bin src///
+	$(BUILDDIR)/mk-index -v -o $(BUILDDIR)/index.bin src/// Makefile
 	$(BUILDDIR)/search
 
 
