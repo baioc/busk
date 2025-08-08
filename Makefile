@@ -53,10 +53,10 @@ build: $(BUILDDIR)/mk-index $(BUILDDIR)/search
 clean:
 	- rm -f $(BUILDDIR)/*
 
-# TODO: actual tests
 test: $(BUILDDIR)/mk-index $(BUILDDIR)/search
-	$(BUILDDIR)/mk-index -v -o $(BUILDDIR)/index.bin src/// Makefile
-	$(BUILDDIR)/search
+	$(BUILDDIR)/mk-index -v -o $(BUILDDIR)/index.bin 'src///' Makefile
+	$(BUILDDIR)/search $(BUILDDIR)/index.bin $(BUILDDIR)/index.bin.rebuilt
+	diff $(BUILDDIR)/index.bin $(BUILDDIR)/index.bin.rebuilt
 
 
 ## Rules

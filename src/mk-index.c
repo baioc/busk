@@ -83,12 +83,19 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 	char *pathbuf = *pathbufp;
 
 	DIR *dir = opendir(pathbuf);
-	if (!dir) return -errno;
+	if (!dir) {
+		const int error = errno;
+		LOG_ERRORF("Failed to open directory at '%s' (errno = %d)", pathbuf, error);
+		return -error;
+	}
 
 	int64_t file_count = 0;
 
-	LOG_INFOF("Indexing directory '%s' ...", pathbuf);
-	++logger.indent;
+	const enum LogLevel level = logger.level;
+	if (level <= LOG_LEVEL_DEBUG) {
+		LOG_DEBUGF("Indexing directory '%s' ...", pathbuf);
+		++logger.indent;
+	}
 	errno = 0;
 	for (struct dirent *entry = NULL; (entry = readdir(dir)); errno = 0) {
 		const char *basename = entry->d_name;
@@ -105,22 +112,18 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 
 		struct stat fstat = {0};
 		if (stat(pathbuf, &fstat) != 0) {
-			LOG_ERRORF("Could not stat file at '%s' (errno = %d)", pathbuf, errno);
+			LOG_ERRORF("Failed to stat file/dir at '%s' (errno = %d)", pathbuf, errno);
 		} else if (S_ISDIR(fstat.st_mode)) {
 			const int64_t result = index_dir_rec(index, &pathbuf);
-			if (result < 0) {
-				LOG_ERRORF("Failed to index directory at '%s' (errno = %d)", pathbuf, (int)-result);
-			} else {
-				file_count += result;
-			}
+			if (result >= 0) file_count += result;
 		} else {
 			FILE *file = fopen(pathbuf, "r");
 			if (!file) {
-				LOG_ERRORF("Failed to index file at '%s' (errno = %d)", pathbuf, errno);
+				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", pathbuf, errno);
 			} else {
-				index_file(index, file, pathbuf);
+				const int64_t ngrams = index_file(index, file, pathbuf);
 				++file_count;
-				LOG_INFOF("Indexed file '%s'", pathbuf);
+				LOG_DEBUGF("Indexed file '%s' (%ld ngrams processed)", pathbuf, ngrams);
 			}
 		}
 
@@ -129,7 +132,10 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 		pathbuf[oldlen - 1] = '\0';
 	}
 	if (errno) LOG_ERRORF("Error while reading directory '%s' (errno = %d)", pathbuf, errno);
-	--logger.indent;
+	if (level <= LOG_LEVEL_DEBUG) {
+		--logger.indent;
+		LOG_DEBUGF("Indexed directory '%s' (%ld files processed)", pathbuf, file_count);
+	}
 
 	closedir(dir);
 	*pathbufp = pathbuf;
@@ -172,31 +178,40 @@ int main(int argc, char *argv[])
 		outfile = stdout;
 	} else {
 		outfile = fopen(cfg.index_output_path, "w+");
-		if (!outfile) LOG_FATALF("Could not open output file at '%s'", cfg.index_output_path);
+		if (!outfile) {
+			LOG_FATALF(
+				"Failed to open output file at '%s' (errno = %d)",
+				cfg.index_output_path, errno
+			);
+		}
 	}
 
 	struct Index index = {0};
+	uint64_t files_indexed = 0;
 	for (int i = 0; i < stbds_arrlen(cfg.corpus_root_dirs); ++i) {
 		const char *path = cfg.corpus_root_dirs[i];
 		struct stat fstat = {0};
 		if (stat(path, &fstat) != 0) {
-			LOG_FATALF("Could not open path at '%s'", path);
+			LOG_ERRORF("Failed to stat file/dir at '%s' (errno = %d)", path, errno);
 		} else if (S_ISDIR(fstat.st_mode)) {
-			index_dir(&index, path);
-			LOG_INFOF("Indexed directory '%s'", path);
+			const int64_t result = index_dir(&index, path);
+			if (result >= 0) files_indexed += result;
 		} else {
 			FILE *file = fopen(path, "r");
 			if (!file) {
-				LOG_FATALF("Could not open file '%s'", path);
+				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", path, errno);
 			} else {
-				index_file(&index, file, path);
-				LOG_INFOF("Indexed file '%s'", path);
+				const int64_t ngrams = index_file(&index, file, path);
+				++files_indexed;
+				LOG_DEBUGF("Indexed file '%s' (%ld ngrams processed)", path, ngrams);
 			}
 		}
 	}
+	LOG_INFOF("Successfully indexed the contents of %ld files", files_indexed);
 
 	const int64_t written = index_save(index, outfile);
 	if (written < 0) LOG_FATALF("Error when saving index to output file: %ld", written);
+	LOG_INFOF("Search index saved to '%s'", cfg.index_output_path);
 
 	index_cleanup(&index);
 	fclose(outfile);
