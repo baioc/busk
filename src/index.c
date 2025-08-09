@@ -32,6 +32,7 @@ typedef struct IndexPostingMapping {
 
 void index_cleanup(struct Index *index)
 {
+	if (!index) return;
 	for (size_t i = 0; i < stbds_hmlenu(index->posting_hm); ++i) {
 		Posting *postings = index->posting_hm[i].value;
 		stbds_hmfree(postings);
@@ -313,4 +314,28 @@ struct IndexResult index_query(struct Index index, struct IndexQuery query)
 	static_assert(sizeof(Posting) == sizeof(uint64_t), "Posting[] <=> uint64_t[] cast check");
 
 	return result;
+}
+
+
+size_t index_pathlen(struct Index index, uint64_t offset)
+{
+	if (offset >= stbds_arrlenu(index.path_arr)) return 0;
+	const char *path = &index.path_arr[offset];
+	const size_t pathlen = strlen(path);
+	return pathlen;
+}
+
+size_t index_path(struct Index index, uint64_t offset, char *pathbuf, size_t buflen)
+{
+	if (offset >= stbds_arrlenu(index.path_arr)) return 0;
+
+	const char *path = &index.path_arr[offset];
+	const size_t pathlen = strlen(path);
+
+	const size_t writtenlen = buflen < pathlen ? buflen : pathlen;
+	memcpy(pathbuf, path, writtenlen);
+	if (writtenlen < buflen) pathbuf[writtenlen] = '\0';
+
+	assert(writtenlen <= buflen);
+	return writtenlen;
 }

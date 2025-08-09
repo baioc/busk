@@ -3,7 +3,7 @@
 #include "log.h"
 
 #include <argp.h>
-#include <stb/stb_ds.h> // hm* macros
+#include <stb/stb_ds.h> // hm* and arr* macros
 
 #include <assert.h>
 #include <errno.h>
@@ -88,6 +88,7 @@ int main(int argc, char *argv[])
 			query, ngram_size
 		);
 	}
+	LOG_DEBUGF("Processing query string \"%s\"", query);
 
 	struct Index index = {0};
 	{
@@ -119,6 +120,7 @@ int main(int argc, char *argv[])
 	size_t intersection_len = 0;
 	bool first = true;
 
+	LOG_DEBUG("Querying index...");
 	assert(query_len >= ngram_size);
 	for (size_t i = 0; i <= query_len - ngram_size; ++i) {
 		const char *ngram_base = &query[i];
@@ -179,16 +181,26 @@ int main(int argc, char *argv[])
 		// TODO: optimize n-way intersection by starting with the smallest set
 	}
 
-	// TODO: open files and confirm query present in each
-
-	FILE *outfile = stdout;
-	for (size_t j = 0; j < stbds_hmlenu(intersection_hm); ++j) {
-		IntersectionResult entry = intersection_hm[j];
-		if (!entry.value) continue;
-		const uint64_t offset = entry.key;
-		const char *path = &index.path_arr[offset];
-		fprintf(outfile, "%s\n", path);
+	LOG_DEBUGF("Got %lu candidate files from ngram index", intersection_len);
+	{
+		FILE *outfile = stdout;
+		char *pathbuf = NULL;
+		for (size_t j = 0; j < stbds_hmlenu(intersection_hm); ++j) {
+			IntersectionResult entry = intersection_hm[j];
+			if (!entry.value) continue;
+			const uint64_t offset = entry.key;
+			const size_t pathlen = index_pathlen(index, offset);
+			stbds_arrsetlen(pathbuf, pathlen + 1);
+			const size_t buflen = stbds_arrlenu(pathbuf);
+			assert(buflen == pathlen + 1);
+			const size_t reallen = index_path(index, offset, pathbuf, buflen);
+			assert(reallen == pathlen);
+			fprintf(outfile, "%.*s\n", (int)reallen, pathbuf);
+		}
+		stbds_arrfree(pathbuf);
 	}
+
+	// TODO: open files and confirm query present in each
 
 	stbds_hmfree(intersection_hm);
 	index_cleanup(&index);

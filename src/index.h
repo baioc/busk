@@ -41,10 +41,17 @@ int index_load(struct Index *index, FILE *file);
 // Index file contents, returning the number of ngrams processed.
 int64_t index_file(struct Index *index, FILE *file, const char *filepath);
 
-// Return the size of an ngram, in bytes.
+// Return the size of an N-gram in bytes (i.e. the value of N).
 size_t index_ngram_size(void);
 
 // Query the index for exactly `index_ngram_size()` bytes read from the query text.
 struct IndexResult index_query(struct Index index, struct IndexQuery query);
+
+// Returns the number of non-null bytes in the path corresponding to the given offset.
+size_t index_pathlen(struct Index index, uint64_t offset);
+
+// Fills (at most buflen bytes in) pathbuf with path corresponding to the given offset.
+// Returns the number of characters written to pathbuf, excluding the null terminator.
+size_t index_path(struct Index index, uint64_t offset, char *pathbuf, size_t buflen);
 
 #endif // INCLUDE_INDEX_H

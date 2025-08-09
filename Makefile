@@ -6,6 +6,7 @@
 
 BUILDDIR = ./build
 RELEASE = 0
+TEST_VERBOSE = 1
 
 INDEX_NGRAM_SIZE = 3
 LOG_BUFFER_SIZE = 4000
@@ -32,6 +33,10 @@ endif
 
 CFLAGS += -fno-strict-aliasing -fno-strict-overflow
 
+ifeq ($(TEST_VERBOSE), 1)
+	TEST_VFLAG = -v
+endif
+
 
 ## Dependencies
 
@@ -54,8 +59,8 @@ clean:
 	- rm -f $(BUILDDIR)/*
 
 test: $(BUILDDIR)/mk-index $(BUILDDIR)/search
-	$(BUILDDIR)/mk-index -v -o $(BUILDDIR)/index.bin 'src///' Makefile
-	$(BUILDDIR)/search -v -i $(BUILDDIR)/index.bin "stbds_arrp"
+	$(BUILDDIR)/mk-index $(TEST_VFLAG) -o $(BUILDDIR)/index.bin 'src///' Makefile
+	$(BUILDDIR)/search $(TEST_VFLAG) -i $(BUILDDIR)/index.bin "stbds_arrp"
 
 
 ## Rules
