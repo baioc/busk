@@ -1,6 +1,7 @@
 #include "index.h"
 #define LOG_NAME "busk.search"
 #include "log.h"
+#include "version.h"
 
 #include <argp.h>
 #include <stb/stb_ds.h> // hm* and arr* macros
@@ -20,11 +21,9 @@ typedef struct {
 	const char *index_input_path;
 } Config;
 
-const char *argp_program_version = "0.1.0";
-
 static const char cli_doc[] = "Query a text search index.";
 
-static const char cli_args_doc[] = "'<QUERY STRING>'";
+static const char cli_args_doc[] = "\"<QUERY STRING>\"";
 
 static const struct argp_option cli_options[] = {
 	{
@@ -75,6 +74,7 @@ static const struct argp cli = {
 int main(int argc, char *argv[])
 {
 	Config cfg = {0};
+	argp_program_version = VERSION_STRING;
 	argp_parse(&cli, argc, argv, 0, NULL, &cfg);
 
 	if (cfg.verbose) logger.level = LOG_LEVEL_TRACE;

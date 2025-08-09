@@ -1,6 +1,7 @@
 #include "index.h"
 #define LOG_NAME "busk.mk-index"
 #include "log.h"
+#include "version.h"
 
 #include <argp.h>
 #include <dirent.h>
@@ -25,8 +26,6 @@ static void config_cleanup(Config *cfg)
 {
 	stbds_arrfree(cfg->corpus_paths);
 }
-
-const char *argp_program_version = "0.1.0";
 
 static const char cli_doc[] = "Generate a text search index from the given FILE/DIRs.";
 
@@ -169,6 +168,7 @@ int main(int argc, char *argv[])
 	int retcode = 0;
 
 	Config cfg = {0};
+	argp_program_version = VERSION_STRING;
 	argp_parse(&cli, argc, argv, 0, NULL, &cfg);
 
 	if (cfg.verbose) logger.level = LOG_LEVEL_DEBUG;

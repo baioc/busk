@@ -8,6 +8,10 @@ BUILDDIR = ./build
 RELEASE = 0
 TEST_VERBOSE = 1
 
+VERSION_MAJOR = 0
+VERSION_MINOR = 1
+VERSION_PATCH = 0
+
 INDEX_NGRAM_SIZE = 3
 LOG_BUFFER_SIZE = 4000
 
@@ -18,6 +22,7 @@ CC = gcc
 CFLAGS = -std=gnu11 -pipe -fvisibility=hidden \
 	-Wall -Wextra -Wbidi-chars=any -Werror=format-security \
 	-Wno-unused-parameter -Wno-missing-field-initializers \
+	-DVERSION_MAJOR=$(VERSION_MAJOR) -DVERSION_MINOR=$(VERSION_MINOR) -DVERSION_PATCH=$(VERSION_PATCH) \
 	-DINDEX_NGRAM_SIZE=$(INDEX_NGRAM_SIZE) -DLOG_BUFFER_SIZE=$(LOG_BUFFER_SIZE)
 LDFLAGS = -Wl,-z,defs
 LDLIBS =
@@ -76,10 +81,10 @@ $(BUILDDIR)/%: $(BUILDDIR)/%.o
 
 # ^ patterns adapted from defaults (as seen with `make -p`)
 
-$(BUILDDIR)/mk-index: src/mk-index.c $(BUILDDIR)/index.o $(BUILDDIR)/log.o
+$(BUILDDIR)/mk-index: src/mk-index.c src/version.h $(BUILDDIR)/index.o $(BUILDDIR)/log.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(filter %.o, $^) $(LDLIBS) -o $@
 
-$(BUILDDIR)/search: src/search.c $(BUILDDIR)/index.o $(BUILDDIR)/log.o
+$(BUILDDIR)/search: src/search.c src/version.h $(BUILDDIR)/index.o $(BUILDDIR)/log.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(filter %.o, $^) $(LDLIBS) -o $@
 
 $(BUILDDIR)/index.o: src/index.c src/index.h
