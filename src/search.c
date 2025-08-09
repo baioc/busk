@@ -3,11 +3,15 @@
 #include "log.h"
 
 #include <argp.h>
+#include <stb/stb_ds.h> // hm* macros
 
+#include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h> // NULL
+#include <stdint.h>
 #include <stdio.h>
+#include <string.h> // strlen
 
 
 typedef struct {
@@ -73,7 +77,17 @@ int main(int argc, char *argv[])
 	Config cfg = {0};
 	argp_parse(&cli, argc, argv, 0, NULL, &cfg);
 
-	if (cfg.verbose) logger.level = LOG_LEVEL_DEBUG;
+	if (cfg.verbose) logger.level = LOG_LEVEL_TRACE;
+	const char *query = cfg.query;
+	const size_t query_len = strlen(query);
+
+	const size_t ngram_size = index_ngram_size();
+	if (query_len < ngram_size) {
+		LOG_FATALF(
+			"Query string '%s' is too short, need at least %lu characters",
+			query, ngram_size
+		);
+	}
 
 	struct Index index = {0};
 	{
@@ -97,12 +111,86 @@ int main(int argc, char *argv[])
 		fclose(infile);
 	}
 
-	// TODO: text search
-	// - break up query text into ngrams
-	// - fetch postings for each ngram using index
-	// - intersect postings
-	// - open files and confirm query present in each
+	typedef struct {
+		uint64_t key; // offset from query result
+		bool value; // whether offset is in intersection
+	} IntersectionResult;
+	IntersectionResult *intersection_hm = NULL;
+	size_t intersection_len = 0;
+	bool first = true;
 
+	assert(query_len >= ngram_size);
+	for (size_t i = 0; i <= query_len - ngram_size; ++i) {
+		const char *ngram_base = &query[i];
+		const size_t remaining_len = query_len - i;
+		const struct IndexQuery query = { .text = ngram_base, .strlen = remaining_len };
+		const struct IndexResult result = index_query(index, query);
+
+		IntersectionResult *result_set = NULL;
+		for (size_t j = 0; j < result.length; ++j) {
+			uint64_t offset = result.offsets[j];
+			stbds_hmput(result_set, offset, true);
+		}
+
+		if (first) { // populate initial set of results
+			intersection_hm = result_set;
+			intersection_len = stbds_hmlenu(result_set);
+			first = false;
+		} else { // soft-remove elements not in intersection
+			for (size_t j = 0; j < stbds_hmlenu(intersection_hm); ++j) {
+				const IntersectionResult entry = intersection_hm[j];
+				if (!entry.value) continue;
+				const IntersectionResult *found = stbds_hmgetp_null(result_set, entry.key);
+				if (!found) {
+					stbds_hmput(intersection_hm, entry.key, false);
+					--intersection_len;
+				}
+			}
+			stbds_hmfree(result_set);
+		}
+
+		if (logger.level <= LOG_LEVEL_TRACE) {
+			static char tracebuf[4096];
+			size_t tracelen = 0;
+			tracebuf[sizeof(tracebuf) - 1] = '\0';
+
+			#define PARTIAL_TRACEF(...) do { \
+				if (tracelen < sizeof(tracebuf) - 1) { \
+					const size_t remaining = sizeof(tracebuf) - 1 - tracelen; \
+					const size_t written = snprintf(&tracebuf[tracelen], remaining, __VA_ARGS__); \
+					tracelen += written; \
+				} \
+			} while (0)
+
+			PARTIAL_TRACEF("Processing ngram='");
+			for (size_t i = 0; i < ngram_size; ++i) {
+				const char c = ngram_base[i];
+				if (c == '\\' || c == '\'') PARTIAL_TRACEF("\\%c", c);
+				else if (c >= ' ' && c <= '~') PARTIAL_TRACEF("%c", c);
+				else PARTIAL_TRACEF("\\x%02X", c);
+			}
+			PARTIAL_TRACEF("' files=%lu intersection=%lu", result.length, intersection_len);
+			LOG_TRACEF("%s", tracebuf);
+
+			#undef PARTIAL_TRACEF
+		}
+
+		// TODO: hard remove elements, then check zero length for early stop
+		// TODO: optimize n-way intersection by starting with the smallest set
+	}
+
+	// TODO: open files and confirm query present in each
+
+	FILE *outfile = stdout;
+	for (size_t j = 0; j < stbds_hmlenu(intersection_hm); ++j) {
+		IntersectionResult entry = intersection_hm[j];
+		if (!entry.value) continue;
+		const uint64_t offset = entry.key;
+		const char *path = &index.path_arr[offset];
+		fprintf(outfile, "%s\n", path);
+	}
+
+	stbds_hmfree(intersection_hm);
 	index_cleanup(&index);
 	return 0;
 }

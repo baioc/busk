@@ -5,13 +5,29 @@
 #include <stdint.h>
 #include <stdio.h> // FILE
 
-struct PostingMapping; // forward decl
+
+struct IndexPostingMapping; // forward decl
 
 // Text search (aka inverted) index. Must be initialized with `{0}`.
 struct Index {
 	char *path_arr; // big array with all paths, concatenated, separated by '\0'.
-	struct PostingMapping *posting_hm; // map of NGram -> Set(Posting).
+	struct IndexPostingMapping *posting_hm; // map of NGram -> Set(Posting).
 };
+
+// Index query, with a pointer to some text and corresponding strlen.
+struct IndexQuery {
+	const char *text;
+	size_t strlen;
+};
+
+// Index query result, with an array of path offsets.
+// A missing result is indicated by a NULL array + zero length.
+// The offsets array is managed internally, and must NOT be modified.
+struct IndexResult {
+	const uint64_t *offsets;
+	size_t length;
+};
+
 
 // Deallocate all internal data structures used in the index.
 void index_cleanup(struct Index *index);
@@ -24,5 +40,11 @@ int index_load(struct Index *index, FILE *file);
 
 // Index file contents, returning the number of ngrams processed.
 int64_t index_file(struct Index *index, FILE *file, const char *filepath);
+
+// Return the size of an ngram, in bytes.
+size_t index_ngram_size(void);
+
+// Query the index for exactly `index_ngram_size()` bytes read from the query text.
+struct IndexResult index_query(struct Index index, struct IndexQuery query);
 
 #endif // INCLUDE_INDEX_H

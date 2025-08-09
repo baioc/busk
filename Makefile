@@ -55,7 +55,7 @@ clean:
 
 test: $(BUILDDIR)/mk-index $(BUILDDIR)/search
 	$(BUILDDIR)/mk-index -v -o $(BUILDDIR)/index.bin 'src///' Makefile
-	$(BUILDDIR)/search -i $(BUILDDIR)/index.bin "stbds_arrp"
+	$(BUILDDIR)/search -v -i $(BUILDDIR)/index.bin "stbds_arrp"
 
 
 ## Rules

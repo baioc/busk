@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdarg.h>
+#include <stddef.h> // NULL
 #include <stdio.h>
 #include <stdlib.h> // exit
 #include <time.h>
@@ -49,7 +50,7 @@ static void log_va(
 	struct tm tm = {0};
 	gmtime_r(&now, &tm);
 
-	const char *level_str;
+	const char *level_str = NULL;
 	switch (level) {
 		case LOG_LEVEL_TRACE: level_str = "TRACE"; break;
 		case LOG_LEVEL_DEBUG: level_str = "DEBUG"; break;

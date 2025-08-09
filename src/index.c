@@ -2,8 +2,8 @@
 
 #include <stb/stb_ds.h> // arrr* and hm* macros
 
-#include <assert.h> // size_t
-#include <stddef.h>
+#include <assert.h>
+#include <stddef.h> // size_t
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h> // qsort
@@ -24,7 +24,7 @@ typedef struct {
 	uint64_t key; // offset into paths array
 } Posting;
 
-typedef struct PostingMapping {
+typedef struct IndexPostingMapping {
 	NGram key;
 	Posting *value;
 } PostingMapping;
@@ -124,7 +124,7 @@ int64_t index_save(struct Index index, FILE *outfile)
 			++written_bytes;
 		}
 
-		written_bytes += fwrite(&ngram, sizeof(ngram), 1, outfile) * sizeof(ngram);
+		written_bytes += fwrite(ngram.bytes, sizeof(ngram), 1, outfile) * sizeof(ngram);
 
 		// also need to sort posting lists for each individual ngram
 		stbds_arrsetlen(postinglist_sorted, postinglen);
@@ -192,7 +192,7 @@ int index_load(struct Index *index, FILE *file)
 		for (int i = 0; i < 4; ++i) postinglen |= (ngram_header[i] & 0x00FFul) << (i*8);
 
 		NGram ngram = {0};
-		memcpy(&ngram, &ngram_header[4], sizeof(ngram));
+		memcpy(ngram.bytes, &ngram_header[4], sizeof(ngram));
 
 		Posting *postings = NULL;
 		for (uint32_t i = 0; i < postinglen; ++i) {
@@ -286,4 +286,31 @@ int64_t index_file(struct Index *index, FILE *file, const char *filepath)
 	}
 
 	return ngram_count;
+}
+
+
+size_t index_ngram_size(void)
+{
+	static_assert(sizeof(NGram) == INDEX_NGRAM_SIZE, "NGram size sanity check");
+	return sizeof(NGram);
+}
+
+struct IndexResult index_query(struct Index index, struct IndexQuery query)
+{
+	const struct IndexResult result_empty = {0};
+	if (query.text == NULL || query.strlen < sizeof(NGram)) return result_empty;
+
+	NGram ngram = {0};
+	memcpy(ngram.bytes, query.text, sizeof(ngram));
+
+	Posting *postings = stbds_hmget(index.posting_hm, ngram);
+	if (!postings) return result_empty;
+
+	struct IndexResult result = {
+		.offsets = (uint64_t *) postings,
+		.length = stbds_hmlenu(postings),
+	};
+	static_assert(sizeof(Posting) == sizeof(uint64_t), "Posting[] <=> uint64_t[] cast check");
+
+	return result;
 }
