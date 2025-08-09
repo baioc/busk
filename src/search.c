@@ -2,39 +2,107 @@
 #define LOG_NAME "busk.search"
 #include "log.h"
 
+#include <argp.h>
+
 #include <errno.h>
+#include <stdbool.h>
+#include <stddef.h> // NULL
 #include <stdio.h>
+
+
+typedef struct {
+	const char *query;
+	bool verbose;
+	const char *index_input_path;
+} Config;
+
+const char *argp_program_version = "0.1.0";
+
+static const char cli_doc[] = "Query a text search index.";
+
+static const char cli_args_doc[] = "'<QUERY STRING>'";
+
+static const struct argp_option cli_options[] = {
+	{
+		.name="verbose", .key='v',
+		.doc="Print more verbose output to stderr",
+	},
+	{
+		.name="index", .key='i', .arg="INPUT",
+		.doc="Read index from INPUT instead of stdin",
+	},
+	{0},
+};
+
+static error_t cli_parser(int key, char *arg, struct argp_state *state)
+{
+	Config *cfg = state->input;
+	switch (key) {
+		case 'v':
+			cfg->verbose = true;
+			break;
+
+		case 'i':
+			cfg->index_input_path = arg;
+			break;
+
+		case ARGP_KEY_ARG:
+			cfg->query = arg;
+			break;
+
+		case ARGP_KEY_END:
+			if (state->arg_num > 1) argp_usage(state); // too many args
+			break;
+
+		default:
+			return ARGP_ERR_UNKNOWN;
+	}
+	return 0;
+}
+
+static const struct argp cli = {
+	.doc = cli_doc,
+	.args_doc = cli_args_doc,
+	.options = cli_options,
+	.parser = cli_parser,
+};
 
 
 int main(int argc, char *argv[])
 {
-	const char* index_path = argv[1];
-	FILE *index_file = fopen(index_path, "r");
-	if (!index_file) {
-		LOG_FATALF(
-			"Failed to open index file at '%s' (errno = %d)",
-			index_path, errno
-		);
-	}
+	Config cfg = {0};
+	argp_parse(&cli, argc, argv, 0, NULL, &cfg);
+
+	if (cfg.verbose) logger.level = LOG_LEVEL_DEBUG;
 
 	struct Index index = {0};
-	LOG_INFOF("Loading index from '%s' ...", index_path);
-	int load_error = index_load(&index, index_file);
-	if (load_error) {
-		LOG_FATALF(
-			"Failed to load index from '%s' (errno = %d)",
-			index_path, load_error
-		);
-	}
-	LOG_INFOF("Index loaded from '%s'", index_path);
+	{
+		const char* inpath = cfg.index_input_path;
+		FILE *infile = NULL;
+		if (!inpath) {
+			infile = stdin;
+		} else {
+			infile = fopen(inpath, "r");
+			if (!infile)
+				LOG_FATALF("Failed to open index file at '%s' (errno = %d)", inpath, errno);
+		}
 
-	const char* check_path = argv[2];
-	FILE *check_file = fopen(check_path, "w+");
-	if (!check_file) LOG_FATALF("Failed to open output file at '%s'", check_path);
-	index_save(index, check_file);
-	fclose(check_file);
+		LOG_DEBUGF("Loading index from '%s' ...", inpath);
+		int load_error = index_load(&index, infile);
+		if (load_error) {
+			LOG_FATALF("Failed to load index from '%s' (errno = %d)", inpath, load_error);
+		}
+		LOG_DEBUGF("Index loaded from '%s'", inpath);
+
+		fclose(infile);
+	}
+
+	// TODO: text search
+	// - break up query text into ngrams
+	// - fetch postings for each ngram using index
+	// - intersect postings
+	// - open files and confirm query present in each
 
 	index_cleanup(&index);
-	fclose(index_file);
 	return 0;
 }

@@ -32,12 +32,12 @@ typedef struct PostingMapping {
 
 void index_cleanup(struct Index *index)
 {
-	for (size_t i = 0; i < stbds_hmlenu(index->postings); ++i) {
-		Posting *postings = index->postings[i].value;
+	for (size_t i = 0; i < stbds_hmlenu(index->posting_hm); ++i) {
+		Posting *postings = index->posting_hm[i].value;
 		stbds_hmfree(postings);
 	}
-	stbds_hmfree(index->postings);
-	stbds_arrfree(index->paths);
+	stbds_hmfree(index->posting_hm);
+	stbds_arrfree(index->path_arr);
 }
 
 
@@ -90,8 +90,8 @@ int64_t index_save(struct Index index, FILE *outfile)
 		'\x1A', // ascii "Ctrl-Z", treated as end of file in DOS
 	};
 	static_assert(sizeof(magic) == 8, "File magic should be 8 bytes");
-	const uint64_t ngrams = stbds_hmlenu(index.postings);
-	const uint64_t pathslen = stbds_arrlenu(index.paths);
+	const uint64_t ngrams = stbds_hmlenu(index.posting_hm);
+	const uint64_t pathslen = stbds_arrlenu(index.path_arr);
 
 	written_bytes += fwrite(magic, sizeof(magic), 1, outfile) * sizeof(magic);
 	for (int i = 0; i < 8; ++i) {
@@ -104,21 +104,21 @@ int64_t index_save(struct Index index, FILE *outfile)
 	}
 	expected_bytes = 8 * 3;
 
-	written_bytes += fwrite(index.paths, 1, pathslen, outfile);
+	written_bytes += fwrite(index.path_arr, 1, pathslen, outfile);
 	expected_bytes += pathslen;
 
 	// sort ngrams to get consistent serialization output
 	PostingMapping *postingmap_sorted = NULL;
 	stbds_arrsetlen(postingmap_sorted, ngrams);
-	memcpy(postingmap_sorted, index.postings, sizeof(PostingMapping) * ngrams);
+	memcpy(postingmap_sorted, index.posting_hm, sizeof(PostingMapping) * ngrams);
 	qsort(postingmap_sorted, ngrams, sizeof(PostingMapping), postingmap_cmp);
 	Posting *postinglist_sorted = NULL;
 
 	for (uint64_t i = 0; i < ngrams; ++i) {
 		const NGram ngram = postingmap_sorted[i].key;
-		const Posting *postingset = postingmap_sorted[i].value;
+		const Posting *postings = postingmap_sorted[i].value;
 
-		const uint32_t postinglen = stbds_hmlen(postingset);
+		const uint32_t postinglen = stbds_hmlen(postings);
 		for (int i = 0; i < 4; ++i) {
 			fputc((postinglen >> (i*8)) & 0xFF, outfile);
 			++written_bytes;
@@ -128,11 +128,11 @@ int64_t index_save(struct Index index, FILE *outfile)
 
 		// also need to sort posting lists for each individual ngram
 		stbds_arrsetlen(postinglist_sorted, postinglen);
-		memcpy(postinglist_sorted, postingset, sizeof(Posting) * postinglen);
+		memcpy(postinglist_sorted, postings, sizeof(Posting) * postinglen);
 		qsort(postinglist_sorted, postinglen, sizeof(Posting), postinglist_cmp);
 
 		for (uint32_t i = 0; i < postinglen; ++i) {
-			const uint64_t offset = postingset[i].key;
+			const uint64_t offset = postings[i].key;
 			for (int i = 0; i < 8; ++i) {
 				fputc((offset >> (i*8)) & 0xFF, outfile);
 				++written_bytes;
@@ -179,7 +179,7 @@ int index_load(struct Index *index, FILE *file)
 		return -4;
 	}
 
-	PostingMapping *postingmap = NULL;
+	PostingMapping *postingsmap = NULL;
 	int error = 0;
 	for (uint64_t i = 0; i < ngrams; ++i) {
 		unsigned char ngram_header[4 + sizeof(NGram)] = {0};
@@ -194,7 +194,7 @@ int index_load(struct Index *index, FILE *file)
 		NGram ngram = {0};
 		memcpy(&ngram, &ngram_header[4], sizeof(ngram));
 
-		Posting *postingset = NULL;
+		Posting *postings = NULL;
 		for (uint32_t i = 0; i < postinglen; ++i) {
 			unsigned char leu64[8] = {0};
 			if (!fread(leu64, sizeof(leu64), 1, file)) {
@@ -212,28 +212,28 @@ int index_load(struct Index *index, FILE *file)
 			}
 
 			Posting posting = { offset };
-			stbds_hmputs(postingset, posting);
+			stbds_hmputs(postings, posting);
 		}
 		if (error) {
-			stbds_hmfree(postingset);
+			stbds_hmfree(postings);
 			break;
 		}
 
-		stbds_hmput(postingmap, ngram, postingset);
+		stbds_hmput(postingsmap, ngram, postings);
 	}
 	if (error) {
-		for (size_t i = 0; i < stbds_hmlenu(postingmap); ++i) {
-			Posting *postingset = postingmap[i].value;
-			stbds_hmfree(postingset);
+		for (size_t i = 0; i < stbds_hmlenu(postingsmap); ++i) {
+			Posting *postings = postingsmap[i].value;
+			stbds_hmfree(postings);
 		}
-		stbds_hmfree(postingmap);
+		stbds_hmfree(postingsmap);
 		stbds_arrfree(paths);
 		return error;
 	}
 
 	*index = (struct Index){
-		.paths = paths,
-		.postings = postingmap,
+		.path_arr = paths,
+		.posting_hm = postingsmap,
 	};
 	return 0;
 }
@@ -241,10 +241,10 @@ int index_load(struct Index *index, FILE *file)
 
 static void index_ngram(struct Index *index, NGram ngram, uint64_t path_offset)
 {
-	Posting *postings = stbds_hmget(index->postings, ngram);
+	Posting *postings = stbds_hmget(index->posting_hm, ngram);
 	Posting posting = { path_offset };
 	stbds_hmputs(postings, posting);
-	stbds_hmput(index->postings, ngram, postings);
+	stbds_hmput(index->posting_hm, ngram, postings);
 }
 
 int64_t index_file(struct Index *index, FILE *file, const char *filepath)
@@ -253,9 +253,9 @@ int64_t index_file(struct Index *index, FILE *file, const char *filepath)
 
 	// append filepath + null terminator to index
 	const size_t path_length = strlen(filepath);
-	const size_t path_offset = stbds_arraddnindex(index->paths, path_length + 1);
-	memcpy(&index->paths[path_offset], filepath, path_length);
-	index->paths[path_offset + path_length] = '\0';
+	const size_t path_offset = stbds_arraddnindex(index->path_arr, path_length + 1);
+	memcpy(&index->path_arr[path_offset], filepath, path_length);
+	index->path_arr[path_offset + path_length] = '\0';
 	// TODO: compress common filepath prefixes
 
 	NGram ngram = {0};

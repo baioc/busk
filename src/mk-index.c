@@ -16,14 +16,14 @@
 
 
 typedef struct {
-	const char **corpus_root_dirs;
-	const char *index_output_path;
+	const char **corpus_paths;
 	bool verbose;
+	const char *index_output_path;
 } Config;
 
 static void config_cleanup(Config *cfg)
 {
-	stbds_arrfree(cfg->corpus_root_dirs);
+	stbds_arrfree(cfg->corpus_paths);
 }
 
 const char *argp_program_version = "0.1.0";
@@ -57,7 +57,7 @@ static error_t cli_parser(int key, char *arg, struct argp_state *state)
 			break;
 
 		case ARGP_KEY_ARG:
-			stbds_arrput(cfg->corpus_root_dirs, arg);
+			stbds_arrput(cfg->corpus_paths, arg);
 			break;
 
 		case ARGP_KEY_END:
@@ -168,28 +168,25 @@ int main(int argc, char *argv[])
 {
 	int retcode = 0;
 
-	Config cfg = { .index_output_path = "-" };
+	Config cfg = {0};
 	argp_parse(&cli, argc, argv, 0, NULL, &cfg);
 
 	if (cfg.verbose) logger.level = LOG_LEVEL_DEBUG;
+	const char *outpath = cfg.index_output_path;
 
 	FILE *outfile = NULL;
-	if (strcmp(cfg.index_output_path, "-") == 0) {
+	if (!outpath) {
 		outfile = stdout;
 	} else {
-		outfile = fopen(cfg.index_output_path, "w+");
-		if (!outfile) {
-			LOG_FATALF(
-				"Failed to open output file at '%s' (errno = %d)",
-				cfg.index_output_path, errno
-			);
-		}
+		outfile = fopen(outpath, "w+");
+		if (!outfile)
+			LOG_FATALF("Failed to open output file at '%s' (errno = %d)", outpath, errno);
 	}
 
 	struct Index index = {0};
 	uint64_t files_indexed = 0;
-	for (int i = 0; i < stbds_arrlen(cfg.corpus_root_dirs); ++i) {
-		const char *path = cfg.corpus_root_dirs[i];
+	for (int i = 0; i < stbds_arrlen(cfg.corpus_paths); ++i) {
+		const char *path = cfg.corpus_paths[i];
 		struct stat fstat = {0};
 		if (stat(path, &fstat) != 0) {
 			LOG_ERRORF("Failed to stat file/dir at '%s' (errno = %d)", path, errno);
@@ -211,7 +208,7 @@ int main(int argc, char *argv[])
 
 	const int64_t written = index_save(index, outfile);
 	if (written < 0) LOG_FATALF("Error when saving index to output file: %ld", written);
-	LOG_INFOF("Search index saved to '%s'", cfg.index_output_path);
+	if (outpath) LOG_INFOF("Search index saved to '%s'", outpath);
 
 	index_cleanup(&index);
 	fclose(outfile);

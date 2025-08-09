@@ -9,8 +9,8 @@ struct PostingMapping; // forward decl
 
 // Text search (aka inverted) index. Must be initialized with `{0}`.
 struct Index {
-	char *paths; // big array with all paths, concatenated, separated by '\0'.
-	struct PostingMapping *postings; // map of NGram -> Set(Posting).
+	char *path_arr; // big array with all paths, concatenated, separated by '\0'.
+	struct PostingMapping *posting_hm; // map of NGram -> Set(Posting).
 };
 
 // Deallocate all internal data structures used in the index.
