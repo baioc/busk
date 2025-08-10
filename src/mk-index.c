@@ -177,6 +177,7 @@ int main(int argc, char *argv[])
 	FILE *outfile = NULL;
 	if (!outpath) {
 		outfile = stdout;
+		outpath = "*stdout*";
 	} else {
 		outfile = fopen(outpath, "w+");
 		if (!outfile)
@@ -207,8 +208,8 @@ int main(int argc, char *argv[])
 	LOG_INFOF("Successfully indexed the contents of %ld files", files_indexed);
 
 	const int64_t written = index_save(index, outfile);
-	if (written < 0) LOG_FATALF("Error when saving index to output file: %ld", written);
-	if (outpath) LOG_INFOF("Search index saved to '%s'", outpath);
+	if (written < 0) LOG_FATALF("Failed to write index to output (errno = %ld)", written);
+	LOG_INFOF("Search index saved to %s", outpath);
 
 	index_cleanup(&index);
 	fclose(outfile);

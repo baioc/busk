@@ -88,7 +88,6 @@ int main(int argc, char *argv[])
 			query, ngram_size
 		);
 	}
-	LOG_DEBUGF("Processing query string \"%s\"", query);
 
 	struct Index index = {0};
 	{
@@ -96,31 +95,29 @@ int main(int argc, char *argv[])
 		FILE *infile = NULL;
 		if (!inpath) {
 			infile = stdin;
+			inpath = "*stdin*";
 		} else {
 			infile = fopen(inpath, "r");
 			if (!infile)
 				LOG_FATALF("Failed to open index file at '%s' (errno = %d)", inpath, errno);
 		}
 
-		LOG_DEBUGF("Loading index from '%s' ...", inpath);
-		int load_error = index_load(&index, infile);
-		if (load_error) {
-			LOG_FATALF("Failed to load index from '%s' (errno = %d)", inpath, load_error);
-		}
-		LOG_DEBUGF("Index loaded from '%s'", inpath);
+		const int load_error = index_load(&index, infile);
+		if (load_error) LOG_FATALF("Failed to parse index from input (errno = %d)", load_error);
+		LOG_DEBUGF("Index loaded from %s", inpath);
 
 		fclose(infile);
 	}
 
 	typedef struct {
 		uint64_t key; // offset from query result
-		bool value; // whether offset is in intersection
+		bool value; // whether offset is actually in the intersection
 	} IntersectionResult;
 	IntersectionResult *intersection_hm = NULL;
 	size_t intersection_len = 0;
 	bool first = true;
 
-	LOG_DEBUG("Querying index...");
+	LOG_DEBUGF("Querying index for string \"%s\"", query);
 	assert(query_len >= ngram_size);
 	for (size_t i = 0; i <= query_len - ngram_size; ++i) {
 		const char *ngram_base = &query[i];

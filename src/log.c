@@ -80,15 +80,13 @@ static void log_va(
 
 	fprintf(log.file, " %-5s ", level_str);
 
-	if (srcfile) {
+	if (srcfile)
 		fprintf(log.file, "(%s:%d) - ", srcfile, srcline);
-	} else {
+	else
 		fprintf(log.file, "- ");
-	}
 
-	for (unsigned long i = 0; i < log.indent * LOG_INDENT_SIZE; ++i) {
+	for (unsigned long i = 0; i < log.indent * LOG_INDENT_SIZE; ++i)
 		fprintf(log.file, " ");
-	}
 
 	static _Thread_local char buffer[LOG_BUFFER_SIZE];
 	const int msglen = vsnprintf(buffer, sizeof(buffer), format, vargs);
