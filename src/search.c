@@ -21,9 +21,9 @@ typedef struct {
 	const char *index_input_path;
 } Config;
 
-static const char cli_doc[] = "Query a text search index.";
+static const char cli_doc[] = "Query an index, listing files to grep a search string in.";
 
-static const char cli_args_doc[] = "\"<QUERY STRING>\"";
+static const char cli_args_doc[] = "\"<SEARCH STRING>\"";
 
 static const struct argp_option cli_options[] = {
 	{
@@ -54,7 +54,7 @@ static error_t cli_parser(int key, char *arg, struct argp_state *state)
 			break;
 
 		case ARGP_KEY_END:
-			if (state->arg_num > 1) argp_usage(state); // too many args
+			if (state->arg_num != 1) argp_usage(state);
 			break;
 
 		default:

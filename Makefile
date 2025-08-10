@@ -7,6 +7,7 @@
 BUILDDIR = ./build
 RELEASE = 0
 TEST_VERBOSE = 1
+PREFIX = ~/.local
 
 VERSION_MAJOR = 0
 VERSION_MINOR = 1
@@ -56,7 +57,7 @@ LDLIBS += $(shell pkg-config --libs-only-l stb)
 
 ## Targets
 
-.PHONY: build clean test
+.PHONY: build clean test install uninstall
 
 build: $(BUILDDIR)/mk-index $(BUILDDIR)/search
 
@@ -66,6 +67,16 @@ clean:
 test: $(BUILDDIR)/mk-index $(BUILDDIR)/search
 	$(BUILDDIR)/mk-index $(TEST_VFLAG) -o $(BUILDDIR)/index.bin 'src///' Makefile
 	$(BUILDDIR)/search $(TEST_VFLAG) -i $(BUILDDIR)/index.bin "stbds_arrp"
+
+install: $(BUILDDIR)/mk-index $(BUILDDIR)/search
+	install -d $(DESTDIR)$(PREFIX)/bin
+	install -m 755 $(BUILDDIR)/mk-index $(DESTDIR)$(PREFIX)/bin/busk.mk-index
+	install -m 755 $(BUILDDIR)/search $(DESTDIR)$(PREFIX)/bin/busk.search
+
+uninstall:
+	- rm $(DESTDIR)$(PREFIX)/bin/busk.search
+	- rm $(DESTDIR)$(PREFIX)/bin/busk.mk-index
+	- rmdir $(DESTDIR)$(PREFIX)/bin
 
 
 ## Rules

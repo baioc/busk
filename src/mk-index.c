@@ -27,7 +27,7 @@ static void config_cleanup(Config *cfg)
 	stbds_arrfree(cfg->corpus_paths);
 }
 
-static const char cli_doc[] = "Generate a text search index from the given FILE/DIRs.";
+static const char cli_doc[] = "Generate a text search index from the given files and/or directories.";
 
 static const char cli_args_doc[] = "<FILE/DIR>...";
 
@@ -60,7 +60,7 @@ static error_t cli_parser(int key, char *arg, struct argp_state *state)
 			break;
 
 		case ARGP_KEY_END:
-			if (state->arg_num < 1) argp_usage(state); // no sources given
+			if (state->arg_num < 1) argp_usage(state);
 			break;
 
 		default:
