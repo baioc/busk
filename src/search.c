@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
 	const size_t ngram_size = index_ngram_size();
 	if (query_len < ngram_size) {
 		LOG_FATALF(
-			"Query string '%s' is too short, need at least %lu characters",
+			"Query string '%s' is too short, need at least %zu characters",
 			query, ngram_size
 		);
 	}
@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
 				else if (c >= ' ' && c <= '~') PARTIAL_TRACEF("%c", c);
 				else PARTIAL_TRACEF("\\x%02X", c);
 			}
-			PARTIAL_TRACEF("' files=%lu intersection=%lu", result.length, intersection_len);
+			PARTIAL_TRACEF("' files=%zu intersection=%zu", result.length, intersection_len);
 			LOG_TRACEF("%s", tracebuf);
 
 			#undef PARTIAL_TRACEF
@@ -178,7 +178,7 @@ int main(int argc, char *argv[])
 		// TODO: optimize n-way intersection by starting with the smallest set
 	}
 
-	LOG_DEBUGF("Got %lu candidate files from ngram index", intersection_len);
+	LOG_DEBUGF("Got %zu candidate files from ngram index", intersection_len);
 	{
 		FILE *outfile = stdout;
 		char *pathbuf = NULL;

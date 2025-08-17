@@ -39,7 +39,7 @@ int64_t index_save(struct Index index, FILE *file);
 int index_load(struct Index *index, FILE *file);
 
 // Index file contents, returning the number of ngrams processed.
-int64_t index_file(struct Index *index, FILE *file, const char *filepath);
+uint64_t index_file(struct Index *index, FILE *file, const char *filepath);
 
 // Return the size of an N-gram in bytes (i.e. the value of N).
 size_t index_ngram_size(void);

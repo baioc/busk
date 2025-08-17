@@ -248,9 +248,9 @@ static void index_ngram(struct Index *index, NGram ngram, uint64_t path_offset)
 	stbds_hmput(index->posting_hm, ngram, postings);
 }
 
-int64_t index_file(struct Index *index, FILE *file, const char *filepath)
+uint64_t index_file(struct Index *index, FILE *file, const char *filepath)
 {
-	int64_t ngram_count = 0;
+	uint64_t ngram_count = 0;
 
 	// append filepath + null terminator to index
 	const size_t path_length = strlen(filepath);

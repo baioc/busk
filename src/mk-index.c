@@ -88,7 +88,7 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 		return -error;
 	}
 
-	int64_t file_count = 0;
+	uint64_t file_count = 0;
 
 	const enum LogLevel level = logger.level;
 	if (level <= LOG_LEVEL_DEBUG) {
@@ -120,9 +120,9 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 			if (!file) {
 				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", pathbuf, errno);
 			} else {
-				const int64_t ngrams = index_file(index, file, pathbuf);
+				const uint64_t ngrams = index_file(index, file, pathbuf);
 				++file_count;
-				LOG_DEBUGF("Indexed file '%s' (%ld ngrams processed)", pathbuf, ngrams);
+				LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", pathbuf, ngrams);
 			}
 		}
 
@@ -133,7 +133,7 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 	if (errno) LOG_ERRORF("Error while reading directory '%s' (errno = %d)", pathbuf, errno);
 	if (level <= LOG_LEVEL_DEBUG) {
 		--logger.indent;
-		LOG_DEBUGF("Indexed directory '%s' (%ld files processed)", pathbuf, file_count);
+		LOG_DEBUGF("Indexed directory '%s' (%zu files processed)", pathbuf, file_count);
 	}
 
 	closedir(dir);
@@ -199,16 +199,16 @@ int main(int argc, char *argv[])
 			if (!file) {
 				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", path, errno);
 			} else {
-				const int64_t ngrams = index_file(&index, file, path);
+				const uint64_t ngrams = index_file(&index, file, path);
 				++files_indexed;
-				LOG_DEBUGF("Indexed file '%s' (%ld ngrams processed)", path, ngrams);
+				LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", path, ngrams);
 			}
 		}
 	}
-	LOG_INFOF("Successfully indexed the contents of %ld files", files_indexed);
+	LOG_INFOF("Successfully indexed the contents of %zu files", files_indexed);
 
 	const int64_t written = index_save(index, outfile);
-	if (written < 0) LOG_FATALF("Failed to write index to output (errno = %ld)", written);
+	if (written < 0) LOG_FATALF("Failed to write index to output (errno = %zd)", written);
 	LOG_INFOF("Search index saved to %s", outpath);
 
 	index_cleanup(&index);
