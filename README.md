@@ -61,6 +61,6 @@ Tested on Ubuntu 24.04 (Noble Numbat):
 
 ## License
 
-Copyright (C) 2025 Gabriel B. Sant'Anna
+Copyright (C) 2025-present Gabriel B. Sant'Anna
 
-This software is dual-licensed: you can redistribute it and/or modify it under the terms of the [GNU Affero General Public License version 3](./LICENSE.txt) as published by the Free Software Foundation or, in case you wish to use it under different terms, you can get in touch with the copyright holders in order to negotiate a commercial license.
+This software is dual-licensed: you can redistribute it and/or modify it under the terms of the [GNU Affero General Public License version 3](./LICENSE.txt) or, in case you wish to use it under different terms, you can get in touch with the copyright holders in order to negotiate a commercial license.
