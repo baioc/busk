@@ -13,6 +13,7 @@
 #include <stddef.h> // NULL
 #include <stdint.h>
 #include <stdio.h> // fopen
+#include <stdlib.h> // qsort
 #include <string.h> // strcmp, strlen, memcpy
 
 
@@ -120,7 +121,8 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 			if (!file) {
 				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", pathbuf, errno);
 			} else {
-				const uint64_t ngrams = index_file(index, file, pathbuf);
+				const size_t pathlen = stbds_arrlenu(pathbuf) - 1;
+				const uint64_t ngrams = index_file(index, file, pathbuf, pathlen);
 				++file_count;
 				LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", pathbuf, ngrams);
 			}
@@ -184,9 +186,14 @@ int main(int argc, char *argv[])
 			LOG_FATALF("Failed to open output file at '%s' (errno = %d)", outpath, errno);
 	}
 
+	// sort path list before processing for reproducible output
+	// TODO: also fix order of indexing directory contents
+	const size_t arglen = stbds_arrlenu(cfg.corpus_paths);
+	qsort(cfg.corpus_paths, arglen, sizeof(char *), (int (*)(const void *, const void *))strcmp);
+
 	struct Index index = {0};
 	uint64_t files_indexed = 0;
-	for (int i = 0; i < stbds_arrlen(cfg.corpus_paths); ++i) {
+	for (size_t i = 0; i < arglen; ++i) {
 		const char *path = cfg.corpus_paths[i];
 		struct stat fstat = {0};
 		if (stat(path, &fstat) != 0) {
@@ -199,7 +206,8 @@ int main(int argc, char *argv[])
 			if (!file) {
 				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", path, errno);
 			} else {
-				const uint64_t ngrams = index_file(&index, file, path);
+				const size_t pathlen = strlen(path);
+				const uint64_t ngrams = index_file(&index, file, path, pathlen);
 				++files_indexed;
 				LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", path, ngrams);
 			}

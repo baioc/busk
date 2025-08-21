@@ -110,8 +110,8 @@ int main(int argc, char *argv[])
 	}
 
 	typedef struct {
-		uint64_t key; // offset from query result
-		bool value; // whether offset is actually in the intersection
+		struct IndexPathHandle key; // handle from query result
+		bool value; // whether handle is actually in the intersection
 	} IntersectionResult;
 	IntersectionResult *intersection_hm = NULL;
 	size_t intersection_len = 0;
@@ -127,8 +127,8 @@ int main(int argc, char *argv[])
 
 		IntersectionResult *result_set = NULL;
 		for (size_t j = 0; j < result.length; ++j) {
-			uint64_t offset = result.offsets[j];
-			stbds_hmput(result_set, offset, true);
+			struct IndexPathHandle handle = result.handles[j];
+			stbds_hmput(result_set, handle, true);
 		}
 
 		if (first) { // populate initial set of results
@@ -185,12 +185,12 @@ int main(int argc, char *argv[])
 		for (size_t j = 0; j < stbds_hmlenu(intersection_hm); ++j) {
 			IntersectionResult entry = intersection_hm[j];
 			if (!entry.value) continue;
-			const uint64_t offset = entry.key;
-			const size_t pathlen = index_pathlen(index, offset);
+			const struct IndexPathHandle handle = entry.key;
+			const size_t pathlen = index_pathlen(index, handle);
 			stbds_arrsetlen(pathbuf, pathlen + 1);
 			const size_t buflen = stbds_arrlenu(pathbuf);
 			assert(buflen == pathlen + 1);
-			const size_t reallen = index_path(index, offset, pathbuf, buflen);
+			const size_t reallen = index_path(index, handle, pathbuf, buflen);
 			assert(reallen == pathlen);
 			fprintf(outfile, "%.*s\n", (int)reallen, pathbuf);
 		}

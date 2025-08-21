@@ -27,18 +27,18 @@ typedef struct {
 typedef struct IndexPostingMapping {
 	NGram key;
 	Posting *value;
-} PostingMapping;
+} IndexPostingMapping;
 
 
 void index_cleanup(struct Index *index)
 {
 	if (!index) return;
-	for (size_t i = 0; i < stbds_hmlenu(index->posting_hm); ++i) {
-		Posting *postings = index->posting_hm[i].value;
+	for (size_t i = 0; i < stbds_hmlenu(index->_posting_hm); ++i) {
+		Posting *postings = index->_posting_hm[i].value;
 		stbds_hmfree(postings);
 	}
-	stbds_hmfree(index->posting_hm);
-	stbds_arrfree(index->path_arr);
+	stbds_hmfree(index->_posting_hm);
+	stbds_arrfree(index->_path_arr);
 }
 
 
@@ -60,8 +60,8 @@ void index_cleanup(struct Index *index)
 
 static int postingmap_cmp(const void *a, const void *b)
 {
-	const PostingMapping *lhs = a;
-	const PostingMapping *rhs = b;
+	const IndexPostingMapping *lhs = a;
+	const IndexPostingMapping *rhs = b;
 	int cmpresult = 0;
 	for (size_t i = 0; i < sizeof(NGram); ++i) {
 		cmpresult = (int)lhs->key.bytes[i] - (int)rhs->key.bytes[i];
@@ -91,28 +91,28 @@ int64_t index_save(struct Index index, FILE *outfile)
 		'\x1A', // ascii "Ctrl-Z", treated as end of file in DOS
 	};
 	static_assert(sizeof(magic) == 8, "File magic should be 8 bytes");
-	const uint64_t ngrams = stbds_hmlenu(index.posting_hm);
-	const uint64_t pathslen = stbds_arrlenu(index.path_arr);
+	const uint64_t ngrams = stbds_hmlenu(index._posting_hm);
+	const uint64_t pathslen = stbds_arrlenu(index._path_arr);
 
 	written_bytes += fwrite(magic, sizeof(magic), 1, outfile) * sizeof(magic);
 	for (int i = 0; i < 8; ++i) {
-		fputc((ngrams >> (i*8)) & 0xFF, outfile);
+		fputc((ngrams >> (i*8)) & 0xff, outfile);
 		++written_bytes;
 	}
 	for (int i = 0; i < 8; ++i) {
-		fputc((pathslen >> (i*8)) & 0xFF, outfile);
+		fputc((pathslen >> (i*8)) & 0xff, outfile);
 		++written_bytes;
 	}
 	expected_bytes = 8 * 3;
 
-	written_bytes += fwrite(index.path_arr, 1, pathslen, outfile);
+	written_bytes += fwrite(index._path_arr, 1, pathslen, outfile);
 	expected_bytes += pathslen;
 
 	// sort ngrams to get consistent serialization output
-	PostingMapping *postingmap_sorted = NULL;
+	IndexPostingMapping *postingmap_sorted = NULL;
 	stbds_arrsetlen(postingmap_sorted, ngrams);
-	memcpy(postingmap_sorted, index.posting_hm, sizeof(PostingMapping) * ngrams);
-	qsort(postingmap_sorted, ngrams, sizeof(PostingMapping), postingmap_cmp);
+	memcpy(postingmap_sorted, index._posting_hm, sizeof(IndexPostingMapping) * ngrams);
+	qsort(postingmap_sorted, ngrams, sizeof(IndexPostingMapping), postingmap_cmp);
 	Posting *postinglist_sorted = NULL;
 
 	for (uint64_t i = 0; i < ngrams; ++i) {
@@ -121,7 +121,7 @@ int64_t index_save(struct Index index, FILE *outfile)
 
 		const uint32_t postinglen = stbds_hmlen(postings);
 		for (int i = 0; i < 4; ++i) {
-			fputc((postinglen >> (i*8)) & 0xFF, outfile);
+			fputc((postinglen >> (i*8)) & 0xff, outfile);
 			++written_bytes;
 		}
 
@@ -135,7 +135,7 @@ int64_t index_save(struct Index index, FILE *outfile)
 		for (uint32_t i = 0; i < postinglen; ++i) {
 			const uint64_t offset = postings[i].key;
 			for (int i = 0; i < 8; ++i) {
-				fputc((offset >> (i*8)) & 0xFF, outfile);
+				fputc((offset >> (i*8)) & 0xff, outfile);
 				++written_bytes;
 			}
 		}
@@ -156,16 +156,18 @@ int index_load(struct Index *index, FILE *file)
 	// return negative: not enough data aka unexpected EOF
 	// return positive: something wrong with read data
 
+	// TODO: optimize for read-only index
+
 	unsigned char file_header[8 * 3] = {0};
 	if (!fread(file_header, sizeof(file_header), 1, file)) return -3;
 
 	if (strncmp((char *) &file_header[0], "\xFF""BUSK01\x1A", 8) != 0) return 1;
 
 	uint64_t ngrams = 0;
-	for (int i = 0; i < 8; ++i) ngrams |= (file_header[8 + i] & 0x00FFull) << (i*8);
+	for (int i = 0; i < 8; ++i) ngrams |= ((uint64_t)file_header[8 + i] & 0xff) << (i*8);
 
 	uint64_t pathslen = 0;
-	for (int i = 0; i < 8; ++i) pathslen |= (file_header[16 + i] & 0x00FFull) << (i*8);
+	for (int i = 0; i < 8; ++i) pathslen |= ((uint64_t)file_header[16 + i] & 0xff) << (i*8);
 
 	char *paths = NULL;
 	stbds_arrsetlen(paths, pathslen);
@@ -180,7 +182,7 @@ int index_load(struct Index *index, FILE *file)
 		return -4;
 	}
 
-	PostingMapping *postingsmap = NULL;
+	IndexPostingMapping *postingsmap = NULL;
 	int error = 0;
 	for (uint64_t i = 0; i < ngrams; ++i) {
 		unsigned char ngram_header[4 + sizeof(NGram)] = {0};
@@ -190,7 +192,7 @@ int index_load(struct Index *index, FILE *file)
 		}
 
 		uint32_t postinglen = 0;
-		for (int i = 0; i < 4; ++i) postinglen |= (ngram_header[i] & 0x00FFul) << (i*8);
+		for (int i = 0; i < 4; ++i) postinglen |= ((uint32_t)ngram_header[i] & 0xff) << (i*8);
 
 		NGram ngram = {0};
 		memcpy(ngram.bytes, &ngram_header[4], sizeof(ngram));
@@ -205,7 +207,7 @@ int index_load(struct Index *index, FILE *file)
 
 			uint64_t offset = 0;
 			for (int i = 0; i < 8; ++i) {
-				offset |= (leu64[i] & 0x00FFull) << (i*8);
+				offset |= ((uint64_t)leu64[i] & 0xff) << (i*8);
 			}
 			if (offset >= pathslen) {
 				error = 5;
@@ -233,8 +235,8 @@ int index_load(struct Index *index, FILE *file)
 	}
 
 	*index = (struct Index){
-		.path_arr = paths,
-		.posting_hm = postingsmap,
+		._path_arr = paths,
+		._posting_hm = postingsmap,
 	};
 	return 0;
 }
@@ -242,21 +244,20 @@ int index_load(struct Index *index, FILE *file)
 
 static void index_ngram(struct Index *index, NGram ngram, uint64_t path_offset)
 {
-	Posting *postings = stbds_hmget(index->posting_hm, ngram);
+	Posting *postings = stbds_hmget(index->_posting_hm, ngram);
 	Posting posting = { path_offset };
 	stbds_hmputs(postings, posting);
-	stbds_hmput(index->posting_hm, ngram, postings);
+	stbds_hmput(index->_posting_hm, ngram, postings);
 }
 
-uint64_t index_file(struct Index *index, FILE *file, const char *filepath)
+uint64_t index_file(struct Index *index, FILE *file, const char *filepath, size_t pathlen)
 {
 	uint64_t ngram_count = 0;
 
 	// append filepath + null terminator to index
-	const size_t path_length = strlen(filepath);
-	const size_t path_offset = stbds_arraddnindex(index->path_arr, path_length + 1);
-	memcpy(&index->path_arr[path_offset], filepath, path_length);
-	index->path_arr[path_offset + path_length] = '\0';
+	const size_t path_offset = stbds_arraddnindex(index->_path_arr, pathlen + 1);
+	memcpy(&index->_path_arr[path_offset], filepath, pathlen);
+	index->_path_arr[path_offset + pathlen] = '\0';
 	// TODO: compress common filepath prefixes
 
 	NGram ngram = {0};
@@ -304,32 +305,34 @@ struct IndexResult index_query(struct Index index, struct IndexQuery query)
 	NGram ngram = {0};
 	memcpy(ngram.bytes, query.text, sizeof(ngram));
 
-	Posting *postings = stbds_hmget(index.posting_hm, ngram);
+	Posting *postings = stbds_hmget(index._posting_hm, ngram);
 	if (!postings) return result_empty;
 
 	struct IndexResult result = {
-		.offsets = (uint64_t *) postings,
+		.handles = (struct IndexPathHandle *) postings,
 		.length = stbds_hmlenu(postings),
 	};
-	static_assert(sizeof(Posting) == sizeof(uint64_t), "Posting[] <=> uint64_t[] cast check");
+	static_assert(sizeof(Posting) == sizeof(struct IndexPathHandle), "Posting[] <=> IndexPathHandle[] cast check");
 
 	return result;
 }
 
 
-size_t index_pathlen(struct Index index, uint64_t offset)
+size_t index_pathlen(struct Index index, struct IndexPathHandle handle)
 {
-	if (offset >= stbds_arrlenu(index.path_arr)) return 0;
-	const char *path = &index.path_arr[offset];
+	const uint64_t offset = handle._offset;
+	if (offset >= stbds_arrlenu(index._path_arr)) return 0;
+	const char *path = &index._path_arr[offset];
 	const size_t pathlen = strlen(path);
 	return pathlen;
 }
 
-size_t index_path(struct Index index, uint64_t offset, char *pathbuf, size_t buflen)
+size_t index_path(struct Index index, struct IndexPathHandle handle, char *pathbuf, size_t buflen)
 {
-	if (offset >= stbds_arrlenu(index.path_arr)) return 0;
+	const uint64_t offset = handle._offset;
+	if (offset >= stbds_arrlenu(index._path_arr)) return 0;
 
-	const char *path = &index.path_arr[offset];
+	const char *path = &index._path_arr[offset];
 	const size_t pathlen = strlen(path);
 
 	const size_t writtenlen = buflen < pathlen ? buflen : pathlen;
