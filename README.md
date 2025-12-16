@@ -42,11 +42,14 @@ Usage: busk.search [-v] [-i INPUT] "<SEARCH STRING>"
 
 ### Dependencies
 
-Tested on Ubuntu 24.04 (Noble Numbat):
 - [glibc](https://sourceware.org/glibc/)
-  - Installed by default
 - [stb](https://github.com/nothings/stb/)
-  - `sudo apt install libstb-dev`
+- [pcre](https://www.pcre.org/)
+
+On Ubuntu (tested on 24.04), these can be installed with
+```shell
+$ sudo apt install libstb-dev libpcre2-dev
+```
 
 ### Building from source
 
