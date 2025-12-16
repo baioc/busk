@@ -127,6 +127,7 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 				const uint64_t ngrams = index_file(index, file, pathbuf, pathlen);
 				++file_count;
 				LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", pathbuf, ngrams);
+				fclose(file);
 			}
 		}
 
@@ -213,6 +214,7 @@ int main(int argc, char *argv[])
 				const uint64_t ngrams = index_file(&index, file, path, pathlen);
 				++files_indexed;
 				LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", path, ngrams);
+				fclose(file);
 			}
 		}
 	}
