@@ -73,7 +73,7 @@ clean:
 
 test: $(BUILDDIR)/mk-index $(BUILDDIR)/search
 	$(BUILDDIR)/mk-index $(TEST_VFLAG) -o $(BUILDDIR)/index.bin 'src///' Makefile
-	$(BUILDDIR)/search $(TEST_VFLAG) -i $(BUILDDIR)/index.bin "stbds_arrp"
+	$(BUILDDIR)/search $(TEST_VFLAG) -c -i $(BUILDDIR)/index.bin "stbds_arrp"
 
 install: $(BUILDDIR)/mk-index $(BUILDDIR)/search
 	install -d $(DESTDIR)$(PREFIX)/bin

@@ -5,18 +5,23 @@ Plain text search using an inverted trigram index.
 
 ## Usage
 
-Combined example:
+### Example
+
+Building the index on the fly, and piping it into the search tool:
+
 ```shell
-$ busk.mk-index src/ | busk.search "stbds_"
-src/mk-index.c
-src/index.c
-src/search.c
+$ busk.mk-index src/ 2> /dev/null | busk.search -c "stbds_arrp"
+src/mk-index.c:1213+10:                 stbds_arrput(cfg->corpus_paths, arg);
+src/mk-index.c:2576+10:         stbds_arrput(pathbuf, '\\0');
+src/mk-index.c:4217+10:         stbds_arrpop(pathbuf);
+src/mk-index.c:4244+10: stbds_arrpush(pathbuf, '\\0');
 ```
 
-busk.mk-index:
-```shell
-Generate a text search index from the given files and/or directories.
+### busk.mk-index
 
+Generates an index file which has the single purpose of being consumed by `busk.search`
+
+```shell
 Usage: busk.mk-index [-v] [-o OUTPUT] <FILE/DIR>...
   -o, --output=OUTPUT        Output index to OUTPUT instead of stdout
   -v, --verbose              Print more verbose output to stderr
@@ -25,17 +30,25 @@ Usage: busk.mk-index [-v] [-o OUTPUT] <FILE/DIR>...
   -V, --version              Print program version
 ```
 
-busk.search:
-```shell
-Query an index, listing files to grep a search string in.
+### busk.search
 
-Usage: busk.search [-v] [-i INPUT] "<SEARCH STRING>"
-  -i, --index=INPUT          Read index from INPUT instead of stdin
+Greps indexed files for a given search string, printing results as `<path>:<offset>+<len>: <match>`
+
+```shell
+Usage: search [OPTION...] "<SEARCH STRING>"
+  -c, --color                Add terminal colors to search results
+  -i, --index=INPUT          Read index file from INPUT instead of stdin
   -v, --verbose              Print more verbose output to stderr
   -?, --help                 Give this help list
       --usage                Give a short usage message
   -V, --version              Print program version
 ```
+
+Note:
+- Only literal search strings are supported (no regex for now).
+- Search strings can span multiple lines and contain arbitrary bytes.
+- Matches will be printed with some characters escaped.
+- The precise match can be read with `dd if=$path bs=1 skip=$offset count=$len`
 
 
 ## Installation
@@ -57,7 +70,7 @@ $ sudo apt install libstb-dev libpcre2-dev
 - You'll also need `make`, `gcc` and `pkg-config` for the build
 - Grab a copy of the source code
 - `make clean build RELEASE=1`
-- `make test` (optional)
+- `make test`
 - `make install` (installs to `~/.local/bin` by default, make sure that's in your `$PATH`)
   - Undo with `make uninstall`
 

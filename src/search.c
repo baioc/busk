@@ -31,7 +31,7 @@ typedef struct {
 	bool color;
 } Config;
 
-static const char cli_doc[] = "Query an index and search its backing files for a string.";
+static const char cli_doc[] = "Query an index and search its backing files for a given string.";
 
 static const char cli_args_doc[] = "\"<SEARCH STRING>\"";
 
@@ -46,7 +46,7 @@ static const struct argp_option cli_options[] = {
 	},
 	{
 		.name="color", .key='c',
-		.doc="Display search results with terminal colors",
+		.doc="Add terminal colors to search results",
 	},
 	{0},
 };
@@ -152,8 +152,10 @@ static void print_match(
 	fprintf(stdout, "\n");
 }
 
-static void grep(pcre2_code *re, FILE *file, const char *filepath, size_t pathlen, bool color)
+static int grep(pcre2_code *re, FILE *file, const char *filepath, size_t pathlen, bool color)
 {
+	int hitcount = 0;
+
 	char buffer[SEARCH_LINE_MAX];
 	const size_t buflen = sizeof(buffer);
 
@@ -182,6 +184,7 @@ static void grep(pcre2_code *re, FILE *file, const char *filepath, size_t pathle
 			LOG_FATAL("Failed to allocate sufficient offsets in match data");
 		} else {
 			assert(rc > 0);
+			++hitcount;
 			PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(match);
 			const PCRE2_SIZE match_begin = ovector[0];
 			const PCRE2_SIZE match_end = ovector[1];
@@ -198,6 +201,8 @@ static void grep(pcre2_code *re, FILE *file, const char *filepath, size_t pathle
 	}
 
 	pcre2_match_data_free(match);
+
+	return hitcount;
 }
 
 
@@ -323,7 +328,8 @@ int main(int argc, char *argv[])
 		// TODO: optimize n-way intersection by starting with the smallest set
 	}
 
-	const bool with_color = cfg.color;
+	bool has_hits = false;
+
 	LOG_DEBUGF("Got %zu candidate files from ngram index", intersection_len);
 	{
 		char *pathbuf = NULL;
@@ -344,7 +350,8 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			LOG_DEBUGF("Searching '%s' ...", pathbuf);
-			grep(re, grepfile, pathbuf, pathlen2, with_color);
+			int hits = grep(re, grepfile, pathbuf, pathlen2, cfg.color);
+			if (hits > 0) has_hits = true;
 			fclose(grepfile);
 		}
 		stbds_arrfree(pathbuf);
@@ -353,5 +360,6 @@ int main(int argc, char *argv[])
 	stbds_hmfree(intersection_hm);
 	index_cleanup(&index);
 	pcre2_code_free(re);
-	return 0;
+
+	return has_hits ? 0 : 1;
 }
