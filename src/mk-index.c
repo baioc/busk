@@ -97,6 +97,8 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 		++logger.indent;
 	}
 	errno = 0;
+
+	// TODO: read files in fully reproducible order
 	for (struct dirent *entry = NULL; (entry = readdir(dir)); errno = 0) {
 		const char *basename = entry->d_name;
 		if (strcmp(basename, ".") == 0) continue;
@@ -132,6 +134,7 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 		stbds_arrsetlen(pathbuf, oldlen);
 		pathbuf[oldlen - 1] = '\0';
 	}
+
 	if (errno) LOG_ERRORF("Error while reading directory '%s' (errno = %d)", pathbuf, errno);
 	if (level <= LOG_LEVEL_DEBUG) {
 		--logger.indent;
@@ -158,6 +161,7 @@ static int64_t index_dir(struct Index *index, const char *dirpath)
 	}
 	stbds_arrpush(pathbuf, '\0');
 
+	// TODO: limit recursion depth, also detect loops irrespective of depth
 	const int64_t fcount = index_dir_rec(index, &pathbuf);
 
 	stbds_arrfree(pathbuf);
@@ -187,7 +191,6 @@ int main(int argc, char *argv[])
 	}
 
 	// sort path list before processing for reproducible output
-	// TODO: also fix order of indexing directory contents
 	const size_t arglen = stbds_arrlenu(cfg.corpus_paths);
 	qsort(cfg.corpus_paths, arglen, sizeof(char *), (int (*)(const void *, const void *))strcmp);
 

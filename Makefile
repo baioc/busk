@@ -2,6 +2,8 @@
 
 .POSIX:
 
+default: build
+
 ## Options
 
 BUILDDIR = ./build
