@@ -56,12 +56,12 @@ Note:
 ### Dependencies
 
 - [glibc](https://sourceware.org/glibc/)
-- [stb](https://github.com/nothings/stb/)
+- [stb](https://github.com/nothings/stb/) (vendored)
 - [pcre](https://www.pcre.org/)
 
 On Ubuntu (tested on 24.04), these can be installed with
 ```shell
-$ sudo apt install libstb-dev libpcre2-dev
+$ sudo apt install libpcre2-dev
 ```
 
 ### Building from source

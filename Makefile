@@ -48,15 +48,15 @@ endif
 
 ## Dependencies
 
+# vendored stuff:
+# - stb - https://github.com/nothings/stb
+CFLAGS += -isystem vendor \
+	-DSTBDS_NO_SHORT_NAMES
+
 # glibc - https://sourceware.org/glibc/manual/latest/html_node/index.html
 LDLIBS += -lc
 
-# libstb-dev - https://github.com/nothings/stb
-CFLAGS += $(shell pkg-config --cflags stb) -DSTBDS_NO_SHORT_NAMES
-LDFLAGS += $(shell pkg-config --libs-only-L stb)
-LDLIBS += $(shell pkg-config --libs-only-l stb)
-
-# libpcre2-dev - https://www.pcre.org/current/doc/html/
+# libpcre2 - https://www.pcre.org/current/doc/html/
 CFLAGS += $(shell pkg-config --cflags libpcre2-8)
 LDFLAGS += $(shell pkg-config --libs-only-L libpcre2-8)
 LDLIBS += $(shell pkg-config --libs-only-l libpcre2-8)
@@ -99,12 +99,14 @@ $(BUILDDIR)/%: $(BUILDDIR)/%.o
 
 # ^ patterns adapted from defaults (as seen with `make -p`)
 
-$(BUILDDIR)/mk-index: src/mk-index.c src/version.h $(BUILDDIR)/index.o $(BUILDDIR)/log.o
+$(BUILDDIR)/mk-index: src/mk-index.c src/version.h $(BUILDDIR)/index.o $(BUILDDIR)/log.o $(BUILDDIR)/stb.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(filter %.o, $^) $(LDLIBS) -o $@
 
-$(BUILDDIR)/search: src/search.c src/version.h $(BUILDDIR)/index.o $(BUILDDIR)/log.o
+$(BUILDDIR)/search: src/search.c src/version.h $(BUILDDIR)/index.o $(BUILDDIR)/log.o $(BUILDDIR)/stb.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(filter %.o, $^) $(LDLIBS) -o $@
 
 $(BUILDDIR)/index.o: src/index.c src/index.h
 
 $(BUILDDIR)/log.o: src/log.c src/log.h
+
+$(BUILDDIR)/stb.o: src/stb.c vendor/stb/stb_ds.h
