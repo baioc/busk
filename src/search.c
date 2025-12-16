@@ -28,6 +28,7 @@ typedef struct {
 	const char *query;
 	bool verbose;
 	const char *index_input_path;
+	bool color;
 } Config;
 
 static const char cli_doc[] = "Query an index and search its backing files for a string.";
@@ -43,6 +44,10 @@ static const struct argp_option cli_options[] = {
 		.name="index", .key='i', .arg="INPUT",
 		.doc="Read index file from INPUT instead of stdin",
 	},
+	{
+		.name="color", .key='c',
+		.doc="Display search results with terminal colors",
+	},
 	{0},
 };
 
@@ -56,6 +61,10 @@ static error_t cli_parser(int key, char *arg, struct argp_state *state)
 
 		case 'i':
 			cfg->index_input_path = arg;
+			break;
+
+		case 'c':
+			cfg->color = true;
 			break;
 
 		case ARGP_KEY_ARG:
@@ -80,20 +89,36 @@ static const struct argp cli = {
 };
 
 
+static void print_char_escaped(char c)
+{
+	if (c == '\\') fprintf(stdout, "\\\\");                                 // \ is escape char
+	else if ((c >= ' ' && c <= '~') || c == '\t') fprintf(stdout, "%c", c); // printed as-is
+	else if (c == '\n') fprintf(stdout, "\\n");                             // newline = \n
+	else fprintf(stdout, "\\x%02X", c);                                     // otherwise, hexcode
+}
+
 static void print_match(
 	const char *buffer, size_t buflen,
 	size_t begin, size_t end,
-	const char *filepath, size_t pathlen, size_t fileoffset
+	const char *filepath, size_t pathlen, size_t fileoffset,
+	bool color
 ) {
 	assert(end <= buflen);
 
 	// <path>:<byteoffset>+<matchlen>:
+	const char *color_default = color ? "\033[0m" : "";
+	const char *color_match = color ? "\33[01;31m" : "";
+	const char *color_path = color ? "\33[35m" : "";
+	const char *color_byte = color ? "\33[32m" : "";
+	const char *color_sep = color ? "\33[36m" : "";
 	const size_t matchlen = end - begin;
 	fprintf(
 		stdout,
-		"%.*s:%zu+%zu: ",
-		(int)pathlen, filepath,
-		fileoffset + begin, matchlen
+		"%s%.*s%s:%s%zu%s+%s%zu%s: %s",
+		color_path, (int)pathlen, filepath, color_sep,
+		color_byte, fileoffset + begin, color_default,
+		color_byte, matchlen, color_sep,
+		color_default
 	);
 
 	// walk backwards until we find a newline, null or the buffer limit
@@ -119,18 +144,15 @@ static void print_match(
 	}
 
 	// now print the line, making sure to escape non-ASCII characters
-	for (size_t i = bol; i < eol; ++i) {
-		const char c = buffer[i];
-		if (c == '\\') fprintf(stdout, "\\\\");                                 // \ is escape char
-		else if ((c >= ' ' && c <= '~') || c == '\t') fprintf(stdout, "%c", c); // printed as-is
-		else if (c == '\n') fprintf(stdout, "\\n");                             // newline = \n
-		else fprintf(stdout, "\\x%02X", c);                                     // otherwise, hexcode
-	}
-
+	for (size_t i = bol; i < begin; ++i) print_char_escaped(buffer[i]);
+	fprintf(stdout, "%s", color_match);
+	for (size_t i = begin; i < end; ++i) print_char_escaped(buffer[i]);
+	fprintf(stdout, "%s", color_default);
+	for (size_t i = end; i < eol; ++i) print_char_escaped(buffer[i]);
 	fprintf(stdout, "\n");
 }
 
-static void grep(pcre2_code *re, FILE *file, const char *filepath, size_t pathlen)
+static void grep(pcre2_code *re, FILE *file, const char *filepath, size_t pathlen, bool color)
 {
 	char buffer[SEARCH_LINE_MAX];
 	const size_t buflen = sizeof(buffer);
@@ -166,7 +188,8 @@ static void grep(pcre2_code *re, FILE *file, const char *filepath, size_t pathle
 			print_match(
 				buffer, read_bytes,
 				match_begin, match_end,
-				filepath, pathlen, file_offset
+				filepath, pathlen, file_offset,
+				color
 			);
 			assert(match_end > match_offset);
 			match_offset = match_end;
@@ -300,6 +323,7 @@ int main(int argc, char *argv[])
 		// TODO: optimize n-way intersection by starting with the smallest set
 	}
 
+	const bool with_color = cfg.color;
 	LOG_DEBUGF("Got %zu candidate files from ngram index", intersection_len);
 	{
 		char *pathbuf = NULL;
@@ -320,7 +344,7 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			LOG_DEBUGF("Searching '%s' ...", pathbuf);
-			grep(re, grepfile, pathbuf, pathlen);
+			grep(re, grepfile, pathbuf, pathlen, with_color);
 			fclose(grepfile);
 		}
 		stbds_arrfree(pathbuf);
