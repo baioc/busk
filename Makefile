@@ -16,7 +16,7 @@ VERSION_MINOR = 1
 VERSION_PATCH = 0
 
 INDEX_NGRAM_SIZE = 3
-LOG_BUFFER_SIZE = 4000
+SEARCH_LINE_MAX = 4096
 
 # https://developers.redhat.com/blog/2018/03/21/compiler-and-linker-flags-gcc
 # https://best.openssf.org/Compiler-Hardening-Guides/Compiler-Options-Hardening-Guide-for-C-and-C++.html
@@ -26,7 +26,7 @@ CFLAGS = -std=gnu11 -pipe -fvisibility=hidden \
 	-Wall -Wextra -Wbidi-chars=any -Werror=format-security \
 	-Wno-unused-parameter -Wno-missing-field-initializers \
 	-DVERSION_MAJOR=$(VERSION_MAJOR) -DVERSION_MINOR=$(VERSION_MINOR) -DVERSION_PATCH=$(VERSION_PATCH) \
-	-DINDEX_NGRAM_SIZE=$(INDEX_NGRAM_SIZE) -DLOG_BUFFER_SIZE=$(LOG_BUFFER_SIZE)
+	-DINDEX_NGRAM_SIZE=$(INDEX_NGRAM_SIZE) -DSEARCH_LINE_MAX=$(SEARCH_LINE_MAX)
 LDFLAGS = -Wl,-z,defs
 LDLIBS =
 
@@ -55,6 +55,11 @@ LDLIBS += -lc
 CFLAGS += $(shell pkg-config --cflags stb) -DSTBDS_NO_SHORT_NAMES
 LDFLAGS += $(shell pkg-config --libs-only-L stb)
 LDLIBS += $(shell pkg-config --libs-only-l stb)
+
+# libpcre2-dev - https://www.pcre.org/current/doc/html/
+CFLAGS += $(shell pkg-config --cflags libpcre2-8)
+LDFLAGS += $(shell pkg-config --libs-only-L libpcre2-8)
+LDLIBS += $(shell pkg-config --libs-only-l libpcre2-8)
 
 
 ## Targets

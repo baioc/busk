@@ -4,6 +4,8 @@
 #include "version.h"
 
 #include <argp.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 #include <stb/stb_ds.h> // hm* and arr* macros
 
 #include <assert.h>
@@ -13,6 +15,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h> // strlen
+#include <limits.h> // LINE_MAX
+
+
+// TODO: read from cmdline option instead
+#ifndef SEARCH_LINE_MAX
+#define SEARCH_LINE_MAX LINE_MAX
+#endif
 
 
 typedef struct {
@@ -21,7 +30,7 @@ typedef struct {
 	const char *index_input_path;
 } Config;
 
-static const char cli_doc[] = "Query an index, listing files to grep a search string in.";
+static const char cli_doc[] = "Query an index and search its backing files for a string.";
 
 static const char cli_args_doc[] = "\"<SEARCH STRING>\"";
 
@@ -32,7 +41,7 @@ static const struct argp_option cli_options[] = {
 	},
 	{
 		.name="index", .key='i', .arg="INPUT",
-		.doc="Read index from INPUT instead of stdin",
+		.doc="Read index file from INPUT instead of stdin",
 	},
 	{0},
 };
@@ -71,6 +80,104 @@ static const struct argp cli = {
 };
 
 
+static void print_match(
+	const char *buffer, size_t buflen,
+	size_t begin, size_t end,
+	const char *filepath, size_t pathlen, size_t fileoffset
+) {
+	assert(end <= buflen);
+
+	// <path>:<byteoffset>+<matchlen>:
+	const size_t matchlen = end - begin;
+	fprintf(
+		stdout,
+		"%.*s:%zu+%zu: ",
+		(int)pathlen, filepath,
+		fileoffset + begin, matchlen
+	);
+
+	// walk backwards until we find a newline, null or the buffer limit
+	size_t bol = 0;
+	if (begin > 0) {
+		for (size_t i = begin - 1; i > 0; --i) {
+			const char c = buffer[i];
+			if (c == '\n' || c == '\0') {
+				bol = i + 1;
+				break;
+			}
+		}
+	}
+
+	// and similarly to find the end of line
+	size_t eol = end;
+	for (size_t i = end; i < buflen; ++i) {
+		const char c = buffer[i];
+		if (c == '\n' || c == '\0') {
+			eol = i;
+			break;
+		}
+	}
+
+	// now print the line, making sure to escape non-ASCII characters
+	for (size_t i = bol; i < eol; ++i) {
+		const char c = buffer[i];
+		if (c == '\\') fprintf(stdout, "\\\\");                                 // \ is escape char
+		else if ((c >= ' ' && c <= '~') || c == '\t') fprintf(stdout, "%c", c); // printed as-is
+		else if (c == '\n') fprintf(stdout, "\\n");                             // newline = \n
+		else fprintf(stdout, "\\x%02X", c);                                     // otherwise, hexcode
+	}
+
+	fprintf(stdout, "\n");
+}
+
+static void grep(pcre2_code *re, FILE *file, const char *filepath, size_t pathlen)
+{
+	char buffer[SEARCH_LINE_MAX];
+	const size_t buflen = sizeof(buffer);
+
+	pcre2_match_data *match = pcre2_match_data_create_from_pattern(re, NULL);
+	if (!match) LOG_FATAL("Failed to allocate match data for this query");
+
+	size_t file_offset = 0;
+	for (size_t read_bytes = 0; (read_bytes = fread(buffer, 1, buflen, file)) > 0; file_offset += read_bytes) {
+		PCRE2_SIZE match_offset = 0;
+
+	next_match:
+		LOG_TRACEF("Grepping %.*s at offset %zu", (int)pathlen, filepath, file_offset + match_offset);
+		int rc = pcre2_match(
+			re,
+			(unsigned char *)buffer, read_bytes,
+			match_offset,
+			PCRE2_NOTEMPTY,
+			match,
+			NULL
+		);
+
+		// TODO: what about a partial match at the end of the buffer?
+		if (rc < 0) { // no match
+			continue;
+		} else if (rc == 0) {
+			LOG_FATAL("Failed to allocate sufficient offsets in match data");
+		} else {
+			assert(rc > 0);
+			PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(match);
+			const PCRE2_SIZE match_begin = ovector[0];
+			const PCRE2_SIZE match_end = ovector[1];
+			print_match(
+				buffer, read_bytes,
+				match_begin, match_end,
+				filepath, pathlen, file_offset
+			);
+			assert(match_end > match_offset);
+			match_offset = match_end;
+			if (match_offset < read_bytes) goto next_match;
+		}
+	}
+
+	pcre2_match_data_free(match);
+}
+
+
 int main(int argc, char *argv[])
 {
 	Config cfg = {0};
@@ -78,6 +185,7 @@ int main(int argc, char *argv[])
 	argp_parse(&cli, argc, argv, 0, NULL, &cfg);
 
 	if (cfg.verbose) logger.level = LOG_LEVEL_TRACE;
+
 	const char *query = cfg.query;
 	const size_t query_len = strlen(query);
 
@@ -89,6 +197,21 @@ int main(int argc, char *argv[])
 		);
 	}
 
+	// TODO: set context parameters for security
+	int errorcode = 0;
+	PCRE2_SIZE error_offset = 0;
+	pcre2_code *re = pcre2_compile(
+		(unsigned char *)query, query_len,
+		PCRE2_LITERAL,
+		&errorcode, &error_offset,
+		NULL
+	);
+	if (!re) {
+		PCRE2_UCHAR buffer[256];
+		pcre2_get_error_message(errorcode, buffer, sizeof(buffer));
+		LOG_FATALF("Invalid query string '%s': %s", query, buffer);
+	}
+
 	struct Index index = {0};
 	{
 		const char* inpath = cfg.index_input_path;
@@ -98,8 +221,7 @@ int main(int argc, char *argv[])
 			inpath = "*stdin*";
 		} else {
 			infile = fopen(inpath, "r");
-			if (!infile)
-				LOG_FATALF("Failed to open index file at '%s' (errno = %d)", inpath, errno);
+			if (!infile) LOG_FATALF("Failed to open index file at '%s' (errno = %d)", inpath, errno);
 		}
 
 		const int load_error = index_load(&index, infile);
@@ -149,7 +271,7 @@ int main(int argc, char *argv[])
 		}
 
 		if (logger.level <= LOG_LEVEL_TRACE) {
-			static char tracebuf[4096];
+			char tracebuf[4096];
 			size_t tracelen = 0;
 			tracebuf[sizeof(tracebuf) - 1] = '\0';
 
@@ -180,26 +302,32 @@ int main(int argc, char *argv[])
 
 	LOG_DEBUGF("Got %zu candidate files from ngram index", intersection_len);
 	{
-		FILE *outfile = stdout;
 		char *pathbuf = NULL;
 		for (size_t j = 0; j < stbds_hmlenu(intersection_hm); ++j) {
+			// extract path from index
 			IntersectionResult entry = intersection_hm[j];
 			if (!entry.value) continue;
 			const struct IndexPathHandle handle = entry.key;
 			const size_t pathlen = index_pathlen(index, handle);
 			stbds_arrsetlen(pathbuf, pathlen + 1);
-			const size_t buflen = stbds_arrlenu(pathbuf);
-			assert(buflen == pathlen + 1);
-			const size_t reallen = index_path(index, handle, pathbuf, buflen);
+			const size_t reallen = index_path(index, handle, pathbuf, pathlen + 1);
 			assert(reallen == pathlen);
-			fprintf(outfile, "%.*s\n", (int)reallen, pathbuf);
+
+			// open & grep each file
+			FILE *grepfile = fopen(pathbuf, "r");
+			if (!grepfile) {
+				LOG_ERRORF("Failed to open indexed file at '%s' (errno = %d)", pathbuf, errno);
+				continue;
+			}
+			LOG_DEBUGF("Searching '%s' ...", pathbuf);
+			grep(re, grepfile, pathbuf, pathlen);
+			fclose(grepfile);
 		}
 		stbds_arrfree(pathbuf);
 	}
 
-	// TODO: open files and confirm query present in each
-
 	stbds_hmfree(intersection_hm);
 	index_cleanup(&index);
+	pcre2_code_free(re);
 	return 0;
 }
