@@ -1,6 +1,7 @@
 #include "log.h"
 
 #include <assert.h>
+#include <limits.h> // LINE_MAX
 #include <stdarg.h>
 #include <stddef.h> // NULL
 #include <stdio.h>
@@ -21,7 +22,7 @@
 #endif
 
 #ifndef LOG_BUFFER_SIZE
-#define LOG_BUFFER_SIZE 30000
+#define LOG_BUFFER_SIZE (LINE_MAX * 4)
 #elif LOG_BUFFER_SIZE < 81
 #error "LOG_BUFFER_SIZE must be at least 81"
 #endif
