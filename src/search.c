@@ -273,13 +273,14 @@ int main(int argc, char *argv[])
 		const char *ngram_base = &query[i];
 		const size_t remaining_len = query_len - i;
 		const struct IndexQuery query = { .text = ngram_base, .strlen = remaining_len };
-		const struct IndexResult result = index_query(index, query);
+		struct IndexResult result = index_query(index, query);
 
 		IntersectionResult *result_set = NULL;
 		for (size_t j = 0; j < result.length; ++j) {
 			struct IndexPathHandle handle = result.handles[j];
 			stbds_hmput(result_set, handle, true);
 		}
+		index_result_cleanup(&result);
 
 		if (first) { // populate initial set of results
 			intersection_hm = result_set;

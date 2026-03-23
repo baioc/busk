@@ -26,7 +26,7 @@ struct IndexPathHandle {
 
 // Index query result, with an array of path handles.
 // A missing result is indicated by a NULL array + zero length.
-// The handles array is managed internally, and must NOT be modified.
+// If not a missing result, must be cleaned up with `index_result_cleanup()`.
 struct IndexResult {
 	const struct IndexPathHandle *handles;
 	size_t length;
@@ -50,6 +50,8 @@ size_t index_ngram_size(void);
 
 // Query the index for exactly `index_ngram_size()` bytes read from the query text.
 struct IndexResult index_query(struct Index index, struct IndexQuery query);
+
+void index_result_cleanup(struct IndexResult *result);
 
 // Returns the number of non-null bytes in the path corresponding to the given offset.
 size_t index_pathlen(struct Index index, struct IndexPathHandle handle);

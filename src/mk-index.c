@@ -151,12 +151,13 @@ static int64_t index_dir(struct Index *index, const char *dirpath)
 {
 	// we'll use a single buffer to build full paths, pushing and popping
 	// suffixes like in a stack, and starting with the root directory
-	// (just note that this buffer is not null-terminated)
 	char *pathbuf = NULL;
 
 	const size_t dirpath_length = strlen(dirpath);
 	const size_t dirpath_offset = stbds_arraddnindex(pathbuf, dirpath_length);
 	memcpy(&pathbuf[dirpath_offset], dirpath, dirpath_length);
+
+	// trim trailing slashes
 	while (pathbuf[stbds_arrlen(pathbuf) - 1] == '/') {
 		stbds_arrpop(pathbuf);
 	}

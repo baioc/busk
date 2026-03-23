@@ -244,10 +244,11 @@ int index_load(struct Index *index, FILE *file)
 
 static void index_ngram(struct Index *index, NGram ngram, uint64_t path_offset)
 {
-	Posting *postings = stbds_hmget(index->_posting_hm, ngram);
-	Posting posting = { path_offset };
-	stbds_hmputs(postings, posting);
-	stbds_hmput(index->_posting_hm, ngram, postings);
+	IndexPostingMapping *index_mapping = stbds_hmgetp_null(index->_posting_hm, ngram);
+	Posting *posting_set = index_mapping ? index_mapping->value : NULL;
+	Posting post = { path_offset };
+	stbds_hmputs(posting_set, post);
+	stbds_hmput(index->_posting_hm, ngram, posting_set);
 }
 
 uint64_t index_file(struct Index *index, FILE *file, const char *filepath, size_t pathlen)
@@ -264,12 +265,8 @@ uint64_t index_file(struct Index *index, FILE *file, const char *filepath, size_
 	char buffer[4096];
 
 	// read first ngram
-	if (!fread(buffer, sizeof(ngram), 1, file)) {
-		return ngram_count;
-	} else {
-		for (size_t i = 0; i < sizeof(ngram); ++i)
-			ngram.bytes[i] = buffer[i];
-	}
+	if (!fread(buffer, sizeof(ngram), 1, file)) return ngram_count;
+	memcpy(ngram.bytes, buffer, sizeof(ngram));
 	index_ngram(index, ngram, path_offset);
 	++ngram_count;
 
@@ -277,11 +274,8 @@ uint64_t index_file(struct Index *index, FILE *file, const char *filepath, size_
 	size_t chunk_length = 0;
 	while ((chunk_length = fread(buffer, 1, sizeof(buffer), file)) > 0) {
 		for (size_t i = 0; i < chunk_length; ++i) {
-			const char byte = buffer[i];
-			for (size_t j = 0; j < sizeof(ngram) - 1; ++j) {
-				ngram.bytes[j] = ngram.bytes[j + 1];
-			}
-			ngram.bytes[sizeof(ngram) - 1] = byte;
+			memmove(ngram.bytes, ngram.bytes + 1, sizeof(ngram) - 1);
+			ngram.bytes[sizeof(ngram) - 1] = buffer[i];
 			index_ngram(index, ngram, path_offset);
 			++ngram_count;
 		}
@@ -299,15 +293,16 @@ size_t index_ngram_size(void)
 
 struct IndexResult index_query(struct Index index, struct IndexQuery query)
 {
-	const struct IndexResult result_empty = {0};
-	if (query.text == NULL || query.strlen < sizeof(NGram)) return result_empty;
+	const struct IndexResult empty_result = {0};
+	if (query.text == NULL || query.strlen < sizeof(NGram)) return empty_result;
 
 	NGram ngram = {0};
 	memcpy(ngram.bytes, query.text, sizeof(ngram));
 
-	Posting *postings = stbds_hmget(index._posting_hm, ngram);
-	if (!postings) return result_empty;
+	IndexPostingMapping *index_mapping = stbds_hmgetp_null(index._posting_hm, ngram);
+	if (!index_mapping) return empty_result;
 
+	Posting *postings = index_mapping->value;
 	struct IndexResult result = {
 		.handles = (struct IndexPathHandle *) postings,
 		.length = stbds_hmlenu(postings),
@@ -315,6 +310,12 @@ struct IndexResult index_query(struct Index index, struct IndexQuery query)
 	static_assert(sizeof(Posting) == sizeof(struct IndexPathHandle), "Posting[] <=> IndexPathHandle[] cast check");
 
 	return result;
+}
+
+void index_result_cleanup(struct IndexResult *result)
+{
+	// nothing to free, since result array is shared within index structure
+	*result = (struct IndexResult){0};
 }
 
 
