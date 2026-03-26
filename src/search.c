@@ -341,8 +341,7 @@ int main(int argc, char *argv[])
 			const struct IndexPathHandle handle = entry.key;
 			const size_t pathlen = index_pathlen(index, handle);
 			stbds_arrsetlen(pathbuf, pathlen + 1);
-			const size_t pathlen2 = index_path(index, handle, pathbuf, pathlen + 1);
-			assert(pathlen2 == pathlen);
+			index_path(index, handle, pathbuf, pathlen + 1);
 
 			// open & grep each file
 			FILE *grepfile = fopen(pathbuf, "r");
@@ -351,7 +350,7 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			LOG_DEBUGF("Searching '%s' ...", pathbuf);
-			int hits = grep(re, grepfile, pathbuf, pathlen2, cfg.color);
+			int hits = grep(re, grepfile, pathbuf, pathlen, cfg.color);
 			if (hits > 0) has_hits = true;
 			fclose(grepfile);
 		}

@@ -24,7 +24,6 @@ SEARCH_LINE_MAX = 4096
 CC = gcc
 CFLAGS = -std=gnu11 -pipe -fvisibility=hidden \
 	-Wall -Wextra -Wbidi-chars=any -Werror=format-security \
-	-Wno-unused-parameter -Wno-missing-field-initializers \
 	-DVERSION_MAJOR=$(VERSION_MAJOR) -DVERSION_MINOR=$(VERSION_MINOR) -DVERSION_PATCH=$(VERSION_PATCH) \
 	-DINDEX_NGRAM_SIZE=$(INDEX_NGRAM_SIZE) -DSEARCH_LINE_MAX=$(SEARCH_LINE_MAX)
 LDFLAGS = -Wl,-z,defs
@@ -50,16 +49,16 @@ endif
 
 # vendored stuff:
 # - stb - https://github.com/nothings/stb
-CFLAGS += -isystem vendor \
-	-DSTBDS_NO_SHORT_NAMES
+CFLAGS += -isystem vendor -DSTBDS_NO_SHORT_NAMES
 
 # glibc - https://sourceware.org/glibc/manual/latest/html_node/index.html
 LDLIBS += -lc
 
 # libpcre2 - https://www.pcre.org/current/doc/html/
-CFLAGS += $(shell pkg-config --cflags libpcre2-8)
-LDFLAGS += $(shell pkg-config --libs-only-L libpcre2-8)
-LDLIBS += $(shell pkg-config --libs-only-l libpcre2-8)
+# (only used in the search binary)
+$(BUILDDIR)/search: CFLAGS += $(shell pkg-config --cflags libpcre2-8)
+$(BUILDDIR)/search: LDFLAGS += $(shell pkg-config --libs-only-L libpcre2-8)
+$(BUILDDIR)/search: LDLIBS += $(shell pkg-config --libs-only-l libpcre2-8)
 
 
 ## Targets

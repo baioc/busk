@@ -1,17 +1,26 @@
+const u32 NGRAM_SIZE = 3;
+
 struct Header {
     char magic[8];
-    le u64 ngrams;
     le u64 pathslen;
+    le u64 ngrams;
+};
+
+struct Path {
+    le u16 allocation_size;
+    le u16 offset_to_prefix;
+    le u16 prefix_length;
+    le u16 suffix_length;
+    char suffix_bytes[allocation_size - 4*sizeof(u16)];
 };
 
 struct Entry {
     le u32 postlen;
-    char ngram[3];
+    char ngram[NGRAM_SIZE];
+    padding[NGRAM_SIZE % 2];
     le u64 offsets[postlen];
 };
 
-Header header @ 0x0;
-
-u8 paths[header.pathslen] @ sizeof(Header);
-
-Entry index[header.ngrams] @ sizeof(Header) + header.pathslen;
+Header header @ $;
+Path paths[while($ < sizeof(Header) + header.pathslen)] @ $;
+Entry index[header.ngrams] @ $;

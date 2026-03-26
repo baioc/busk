@@ -10,8 +10,9 @@ struct IndexPostingMapping; // forward decl
 
 // Text search (aka inverted) index. Must be initialized with `{0}`.
 struct Index {
-	char *_path_arr; // big array with all paths, concatenated, separated by '\0'.
+	uint8_t *_path_arr; // big array with all paths, encoded with compression
 	struct IndexPostingMapping *_posting_hm; // map of NGram -> Set(Posting).
+	uint64_t _last_path_added; // used for prefix compression
 };
 
 // Index query, with a pointer to some text and corresponding strlen.
@@ -42,8 +43,8 @@ int64_t index_save(struct Index index, FILE *file);
 // Load index from file, returning zero on success or an error code.
 int index_load(struct Index *index, FILE *file);
 
-// Index file contents, returning the number of ngrams processed.
-uint64_t index_file(struct Index *index, FILE *file, const char *filepath, size_t pathlen);
+// Index file contents, returning the number of ngrams processed, or a negative error code.
+int64_t index_file(struct Index *index, FILE *file, const char *filepath, size_t pathlen);
 
 // Return the size of an N-gram in bytes (i.e. the value of N).
 size_t index_ngram_size(void);
