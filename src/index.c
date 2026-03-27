@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stdalign.h>
+#include <stdbool.h>
 #include <stddef.h> // size_t
 #include <stdint.h>
 #include <stdio.h>
@@ -18,8 +19,8 @@
 #endif
 
 typedef struct {
-	char bytes[INDEX_NGRAM_SIZE];
-	char _padding[INDEX_NGRAM_SIZE % 2];
+	uint8_t bytes[INDEX_NGRAM_SIZE];
+	uint8_t _padding[INDEX_NGRAM_SIZE % 2];
 } NGram;
 
 typedef struct {
@@ -104,7 +105,7 @@ int64_t index_save(struct Index index, FILE *outfile)
 	int64_t expected_bytes = 0;
 	int64_t written_bytes = 0;
 
-	const char magic[] = {
+	const unsigned char magic[] = {
 		'\xFF', // non-ascii byte to avoid confusion with a text file
 		'B', 'U', 'S', 'K', // make it read nicely in a hex dump
 		'0', '1', // placeholder, may become version number in the future
@@ -176,7 +177,7 @@ int index_load(struct Index *index, FILE *file)
 
 	// TODO: optimize for read-only index
 
-	unsigned char file_header[8 * 3] = {0};
+	uint8_t file_header[8 * 3] = {0};
 	if (!fread(file_header, sizeof(file_header), 1, file)) return -3;
 
 	if (memcmp(&file_header[0], "\xFF""BUSK01\x1A", 8) != 0) return 1;
@@ -197,7 +198,7 @@ int index_load(struct Index *index, FILE *file)
 	// paths
 	uint64_t last_path_added = 0;
 	for (uint64_t offset = 0; offset < pathslen;) {
-		unsigned char entry_header[sizeof(IndexPathEntry)] = {0};
+		uint8_t entry_header[sizeof(IndexPathEntry)] = {0};
 		if (!fread(entry_header, sizeof(entry_header), 1, file)) {
 			stbds_arrfree(paths);
 			return -4;
@@ -232,7 +233,7 @@ int index_load(struct Index *index, FILE *file)
 	IndexPostingMapping *postingsmap = NULL;
 	int error = 0;
 	for (uint64_t i = 0; i < ngrams; ++i) {
-		unsigned char ngram_header[4 + sizeof(NGram)] = {0};
+		uint8_t ngram_header[4 + sizeof(NGram)] = {0};
 		if (!fread(ngram_header, sizeof(ngram_header), 1, file)) {
 			error = -5;
 			break;
@@ -246,7 +247,7 @@ int index_load(struct Index *index, FILE *file)
 
 		Posting *postings = NULL;
 		for (uint32_t i = 0; i < postinglen; ++i) {
-			unsigned char leu64[8] = {0};
+			uint8_t leu64[8] = {0};
 			if (!fread(leu64, sizeof(leu64), 1, file)) {
 				error = -5;
 				break;

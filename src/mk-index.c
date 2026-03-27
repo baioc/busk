@@ -78,6 +78,31 @@ static const struct argp cli = {
 };
 
 
+int64_t index_file_filtered(struct Index *index, FILE *file, const char *filepath, size_t pathlen)
+{
+	// read first 4k to determine whether this is a likely text file
+	uint8_t buffer[4096];
+	const size_t read_bytes = fread(buffer, 1, sizeof(buffer), file);
+	for (size_t i = 0; i < read_bytes; ++i) {
+		const uint8_t c = buffer[i];
+		// ascii text ranges
+		if (9 <= c && c <= 13) continue;
+		if (32 <= c && c <= 126) continue;
+		// non-ascii, but could be UTF8 or ISO-8859-1
+		if (128 <= c) continue;
+		// otherwise, likely not text
+		// TODO: disable this via CLI flag to read binaries as well
+		// TODO: use regexes to filter by filename
+		// TODO: parsing binary formats such as PDFs might be useful
+		return 0;
+	}
+
+	// remember to rewind the file before doing the actual indexing
+	rewind(file);
+	const int64_t result = index_file(index, file, filepath, pathlen);
+	return result;
+}
+
 static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 {
 	char *pathbuf = *pathbufp;
@@ -124,9 +149,13 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", pathbuf, errno);
 			} else {
 				const size_t pathlen = stbds_arrlenu(pathbuf) - 1;
-				const uint64_t ngrams = index_file(index, file, pathbuf, pathlen);
-				++file_count;
-				LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", pathbuf, ngrams);
+				const int64_t ngrams = index_file_filtered(index, file, pathbuf, pathlen);
+				if (ngrams > 0) {
+					++file_count;
+					LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", pathbuf, ngrams);
+				} else {
+					LOG_DEBUGF("Skipped non-text file '%s'", pathbuf);
+				}
 				fclose(file);
 			}
 		}
@@ -212,9 +241,13 @@ int main(int argc, char *argv[])
 				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", path, errno);
 			} else {
 				const size_t pathlen = strlen(path);
-				const uint64_t ngrams = index_file(&index, file, path, pathlen);
-				++files_indexed;
-				LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", path, ngrams);
+				const int64_t ngrams = index_file_filtered(&index, file, path, pathlen);
+				if (ngrams > 0) {
+					++files_indexed;
+					LOG_DEBUGF("Indexed file '%s' (%zu ngrams processed)", path, ngrams);
+				} else {
+					LOG_DEBUGF("Skipped non-text file '%s'", path);
+				}
 				fclose(file);
 			}
 		}

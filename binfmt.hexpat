@@ -1,3 +1,6 @@
+#pragma array_limit 1000000
+#pragma pattern_limit 1000000000
+
 const u32 NGRAM_SIZE = 3;
 
 struct Header {
