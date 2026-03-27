@@ -97,6 +97,24 @@ static void print_char_escaped(char c)
 	else fprintf(stdout, "\\x%02X", c);                                     // otherwise, hexcode
 }
 
+static void print_string_escaped(const char *str, size_t n)
+{
+	bool needs_escaping = false;
+
+	for (size_t i = 0; i < n; ++i) {
+		const char c = str[i];
+		if ((c >= ' ' && c <= '~') || c == '\t') continue;
+		needs_escaping = true;
+		break;
+	}
+
+	if (needs_escaping) {
+		for (size_t i = 0; i < n; ++i) print_char_escaped(str[i]);
+	} else {
+		fprintf(stdout, "%.*s", (int)n, str);
+	}
+}
+
 static void print_match(
 	const char *buffer, size_t buflen,
 	size_t begin, size_t end,
@@ -144,11 +162,11 @@ static void print_match(
 	}
 
 	// now print the line, making sure to escape non-ASCII characters
-	for (size_t i = bol; i < begin; ++i) print_char_escaped(buffer[i]);
+	print_string_escaped(&buffer[bol], begin - bol);
 	fprintf(stdout, "%s", color_match);
-	for (size_t i = begin; i < end; ++i) print_char_escaped(buffer[i]);
+	print_string_escaped(&buffer[begin], end - begin);
 	fprintf(stdout, "%s", color_default);
-	for (size_t i = end; i < eol; ++i) print_char_escaped(buffer[i]);
+	print_string_escaped(&buffer[end], eol - end);
 	fprintf(stdout, "\n");
 }
 
