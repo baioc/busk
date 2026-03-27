@@ -159,7 +159,7 @@ int index_load(struct Index *index, FILE *file)
 	// return negative: not enough data aka unexpected EOF
 	// return positive: something wrong with read data
 
-	// TODO: optimize for read-only index
+	// TODO: optimize for read-only index (mmap)
 
 	uint8_t file_header[8 * 3] = {0};
 	if (!fread(file_header, sizeof(file_header), 1, file)) return -3;
@@ -230,6 +230,7 @@ int index_load(struct Index *index, FILE *file)
 		memcpy(ngram.bytes, &ngram_header[4], INDEX_NGRAM_SIZE);
 
 		uint64_t *postings = NULL;
+		stbds_arrsetlen(postings, postinglen);
 		for (uint32_t i = 0; i < postinglen; ++i) {
 			uint8_t leu64[8] = {0};
 			if (!fread(leu64, sizeof(leu64), 1, file)) {
@@ -246,7 +247,7 @@ int index_load(struct Index *index, FILE *file)
 				break;
 			}
 
-			stbds_arrput(postings, offset);
+			postings[i] = offset;
 		}
 		if (error) {
 			stbds_arrfree(postings);
