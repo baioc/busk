@@ -17,6 +17,11 @@
 #include <string.h> // strcmp, strlen, memcpy
 
 
+#ifndef MKINDEX_MAX_FOLDER_DEPTH
+#define MKINDEX_MAX_FOLDER_DEPTH 64
+#endif
+
+
 typedef struct {
 	const char **corpus_paths;
 	bool verbose;
@@ -103,9 +108,14 @@ int64_t index_file_filtered(struct Index *index, FILE *file, const char *filepat
 	return result;
 }
 
-static int64_t index_dir_rec(struct Index *index, char **pathbufp)
+static int64_t index_dir_rec(struct Index *index, char **pathbufp, int depth)
 {
 	char *pathbuf = *pathbufp;
+
+	if (depth >= MKINDEX_MAX_FOLDER_DEPTH) {
+		LOG_ERRORF("Skipped directory at '%s' due to recursion depth limit (%d)", pathbuf, depth);
+		return 0;
+	}
 
 	DIR *dir = opendir(pathbuf);
 	if (!dir) {
@@ -141,7 +151,7 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp)
 		if (stat(pathbuf, &fstat) != 0) {
 			LOG_ERRORF("Failed to stat file/dir at '%s' (errno = %d)", pathbuf, errno);
 		} else if (S_ISDIR(fstat.st_mode)) {
-			const int64_t result = index_dir_rec(index, &pathbuf);
+			const int64_t result = index_dir_rec(index, &pathbuf, depth + 1);
 			if (result >= 0) file_count += result;
 		} else {
 			FILE *file = fopen(pathbuf, "r");
@@ -192,8 +202,8 @@ static int64_t index_dir(struct Index *index, const char *dirpath)
 	}
 	stbds_arrpush(pathbuf, '\0');
 
-	// TODO: limit recursion depth, also detect loops irrespective of depth
-	const int64_t fcount = index_dir_rec(index, &pathbuf);
+	// TODO: detect folder structure loops
+	const int64_t fcount = index_dir_rec(index, &pathbuf, 0);
 
 	stbds_arrfree(pathbuf);
 	return fcount;
