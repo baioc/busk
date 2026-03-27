@@ -48,7 +48,7 @@ Note:
 - Only literal search strings are supported (no regex for now).
 - Search strings can span multiple lines and contain arbitrary bytes.
 - Matches will be printed with some characters escaped.
-- The precise match can be read with `dd if=$path bs=1 skip=$offset count=$len`
+- The precise match can be read with the equivalent of `dd if=$path bs=1 skip=$offset count=$len`
 
 
 ## Installation

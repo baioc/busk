@@ -8,7 +8,7 @@
 #include <stddef.h> // size_t
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h> // qsort
+#include <stdlib.h> // qsort, bsearch
 #include <string.h> // strlen, memcpy, strncmp
 
 
@@ -23,13 +23,9 @@ typedef struct {
 	uint8_t _padding[INDEX_NGRAM_SIZE % 2];
 } NGram;
 
-typedef struct {
-	uint64_t key; // offset into paths array
-} Posting;
-
 typedef struct IndexPostingMapping {
 	NGram key;
-	Posting *value;
+	uint64_t *value; // offsets into paths array
 } IndexPostingMapping;
 
 typedef struct {
@@ -45,8 +41,8 @@ void index_cleanup(struct Index *index)
 {
 	if (!index) return;
 	for (size_t i = 0; i < stbds_hmlenu(index->_posting_hm); ++i) {
-		Posting *postings = index->_posting_hm[i].value;
-		stbds_hmfree(postings);
+		uint64_t *postings = index->_posting_hm[i].value;
+		stbds_arrfree(postings);
 	}
 	stbds_hmfree(index->_posting_hm);
 	stbds_arrfree(index->_path_arr);
@@ -79,15 +75,6 @@ static int postingmap_cmp(const void *a, const void *b)
 		if (cmpresult != 0) break;
 	}
 	return cmpresult;
-}
-
-static int postinglist_cmp(const void *a, const void *b)
-{
-	const Posting *lhs = a;
-	const Posting *rhs = b;
-	if (lhs->key < rhs->key) return -1;
-	else if (lhs->key > rhs->key) return 1;
-	else return 0;
 }
 
 static inline size_t write_le(FILE *file, uint64_t value, size_t size)
@@ -139,30 +126,27 @@ int64_t index_save(struct Index index, FILE *outfile)
 	stbds_arrsetlen(postingmap_sorted, ngrams);
 	memcpy(postingmap_sorted, index._posting_hm, sizeof(IndexPostingMapping) * ngrams);
 	qsort(postingmap_sorted, ngrams, sizeof(IndexPostingMapping), postingmap_cmp);
-	Posting *postinglist_sorted = NULL;
 
 	for (uint64_t i = 0; i < ngrams; ++i) {
 		const NGram ngram = postingmap_sorted[i].key;
-		const Posting *postings = postingmap_sorted[i].value;
+		const uint64_t *postings = postingmap_sorted[i].value;
 
-		const uint32_t postinglen = stbds_hmlen(postings);
+		const uint32_t postinglen = stbds_arrlenu(postings);
 		written_bytes += write_le(outfile, postinglen, sizeof(uint32_t));
 		written_bytes += fwrite((char*)&ngram, 1, sizeof(ngram), outfile);
 
+		// posting lists are already sorted, since path offsets are allocated
+		// monotonically, and we only ever append to the end of posting lists
 		// also need to sort posting lists for each individual ngram
-		stbds_arrsetlen(postinglist_sorted, postinglen);
-		memcpy(postinglist_sorted, postings, sizeof(Posting) * postinglen);
-		qsort(postinglist_sorted, postinglen, sizeof(Posting), postinglist_cmp);
 
 		for (uint32_t i = 0; i < postinglen; ++i) {
-			const uint64_t offset = postings[i].key;
+			const uint64_t offset = postings[i];
 			written_bytes += write_le(outfile, offset, sizeof(uint64_t));
 		}
 
 		expected_bytes += 4 + sizeof(ngram) + postinglen*8;
 	}
 
-	stbds_arrfree(postinglist_sorted);
 	stbds_arrfree(postingmap_sorted);
 
 	const int64_t error = written_bytes - expected_bytes;
@@ -245,7 +229,7 @@ int index_load(struct Index *index, FILE *file)
 		NGram ngram = {0};
 		memcpy(ngram.bytes, &ngram_header[4], INDEX_NGRAM_SIZE);
 
-		Posting *postings = NULL;
+		uint64_t *postings = NULL;
 		for (uint32_t i = 0; i < postinglen; ++i) {
 			uint8_t leu64[8] = {0};
 			if (!fread(leu64, sizeof(leu64), 1, file)) {
@@ -262,11 +246,10 @@ int index_load(struct Index *index, FILE *file)
 				break;
 			}
 
-			Posting posting = { offset };
-			stbds_hmputs(postings, posting);
+			stbds_arrput(postings, offset);
 		}
 		if (error) {
-			stbds_hmfree(postings);
+			stbds_arrfree(postings);
 			break;
 		}
 
@@ -274,8 +257,8 @@ int index_load(struct Index *index, FILE *file)
 	}
 	if (error) {
 		for (size_t i = 0; i < stbds_hmlenu(postingsmap); ++i) {
-			Posting *postings = postingsmap[i].value;
-			stbds_hmfree(postings);
+			uint64_t *postings = postingsmap[i].value;
+			stbds_arrfree(postings);
 		}
 		stbds_hmfree(postingsmap);
 		stbds_arrfree(paths);
@@ -291,13 +274,30 @@ int index_load(struct Index *index, FILE *file)
 }
 
 
+static int posting_cmp(const void *a, const void *b)
+{
+	const uint64_t lhs = *(const uint64_t *)a;
+	const uint64_t rhs = *(const uint64_t *)b;
+	if (lhs < rhs) return -1;
+	else if (lhs > rhs) return 1;
+	else return 0;
+}
+
 static void index_ngram(struct Index *index, NGram ngram, uint64_t path_offset)
 {
 	IndexPostingMapping *index_mapping = stbds_hmgetp_null(index->_posting_hm, ngram);
-	Posting *posting_set = index_mapping ? index_mapping->value : NULL;
-	Posting post = { path_offset };
-	stbds_hmputs(posting_set, post);
-	stbds_hmput(index->_posting_hm, ngram, posting_set);
+	uint64_t *postings = index_mapping ? index_mapping->value : NULL;
+
+	// if offset already in posting list, do nothing
+	if (postings) {
+		const size_t n = stbds_arrlenu(postings);
+		uint64_t *found = bsearch(&path_offset, postings, n, sizeof(path_offset), posting_cmp);
+		if (found) return;
+	}
+
+	// otherwise, append to posting list (offsets are monotonic so this is sorted)
+	stbds_arrput(postings, path_offset);
+	stbds_hmput(index->_posting_hm, ngram, postings);
 }
 
 static size_t round_to_alignment(size_t base_size, size_t alignment)
@@ -418,7 +418,31 @@ int64_t index_file(struct Index *index, FILE *file, const char *filepath, size_t
 	// read the following ngrams by sliding an N-byte window with 1-byte steps
 	size_t chunk_length = 0;
 	while ((chunk_length = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-		for (size_t i = 0; i < chunk_length; ++i) {
+		// edge case: chunk is too short
+		if (chunk_length <= INDEX_NGRAM_SIZE) {
+			for (size_t i = 0; i < chunk_length; ++i) {
+				memmove(ngram.bytes, ngram.bytes + 1, INDEX_NGRAM_SIZE - 1);
+				ngram.bytes[INDEX_NGRAM_SIZE - 1] = buffer[i];
+				index_ngram(index, ngram, path_offset);
+				++ngram_count;
+			}
+			continue;
+		}
+		// until the first ngram is totaly gone, we actually slide the bytes
+		for (size_t i = 0; i < INDEX_NGRAM_SIZE - 1; ++i) {
+			memmove(ngram.bytes, ngram.bytes + 1, INDEX_NGRAM_SIZE - 1);
+			ngram.bytes[INDEX_NGRAM_SIZE - 1] = buffer[i];
+			index_ngram(index, ngram, path_offset);
+			++ngram_count;
+		}
+		// after that point, we make a non-overlapping copy each time
+		for (size_t i = 0; i <= chunk_length - INDEX_NGRAM_SIZE; ++i) {
+			memcpy(ngram.bytes, &buffer[i], INDEX_NGRAM_SIZE);
+			index_ngram(index, ngram, path_offset);
+			++ngram_count;
+		}
+		// at the end of the buffer, we go back to byte-by-byte
+		for (size_t i = chunk_length - INDEX_NGRAM_SIZE + 1; i < chunk_length; ++i) {
 			memmove(ngram.bytes, ngram.bytes + 1, INDEX_NGRAM_SIZE - 1);
 			ngram.bytes[INDEX_NGRAM_SIZE - 1] = buffer[i];
 			index_ngram(index, ngram, path_offset);
@@ -446,12 +470,12 @@ struct IndexResult index_query(struct Index index, struct IndexQuery query)
 	IndexPostingMapping *index_mapping = stbds_hmgetp_null(index._posting_hm, ngram);
 	if (!index_mapping) return empty_result;
 
-	Posting *postings = index_mapping->value;
+	const uint64_t *postings = index_mapping->value;
 	struct IndexResult result = {
-		.handles = (struct IndexPathHandle *)postings,
-		.length = stbds_hmlenu(postings),
+		.handles = (const struct IndexPathHandle *)postings,
+		.length = stbds_arrlenu(postings),
 	};
-	static_assert(sizeof(Posting) == sizeof(struct IndexPathHandle), "Posting[] <=> IndexPathHandle[] cast check");
+	static_assert(sizeof(*postings) == sizeof(struct IndexPathHandle), "u64[] <=> IndexPathHandle[] cast check");
 
 	return result;
 }

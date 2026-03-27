@@ -248,7 +248,7 @@ int main(int argc, char *argv[])
 	PCRE2_SIZE error_offset = 0;
 	pcre2_code *re = pcre2_compile(
 		(unsigned char *)query, query_len,
-		PCRE2_LITERAL,
+		PCRE2_LITERAL, // TODO: actual regex search
 		&errorcode, &error_offset,
 		NULL
 	);
