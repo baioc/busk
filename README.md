@@ -3,6 +3,46 @@
 Plain text search using an inverted trigram index.
 
 
+## Performance
+
+The whole point of a search index is to make searches fast.
+
+Once the index is ready, we're currently faster than grep:
+
+```shell
+$ hyperfine -i \
+  "grep -I -e 'TODO' -R ~/code" \
+  "busk.search -i code.busk 'TODO'"
+
+Benchmark 1: grep -I -e 'TODO' -R ~/code
+  Time (mean ± σ):     12.803 s ±  2.835 s    [User: 9.906 s, System: 1.526 s]
+  Range (min … max):   10.697 s … 18.541 s    10 runs
+
+  Warning: Ignoring non-zero exit code.
+
+Benchmark 2: busk.search -i code.busk 'TODO'
+  Time (mean ± σ):      3.106 s ±  0.880 s    [User: 2.264 s, System: 0.522 s]
+  Range (min … max):    2.670 s …  5.157 s    10 runs
+
+Summary
+  busk.search -i code.busk 'TODO' ran
+    4.12 ± 1.48 times faster than grep -I -e 'TODO' -R ~/code
+```
+
+Building the index, however, might be slow:
+
+```shell
+$ du -Lsh -c ~/code/ 2> /dev/null | grep total
+# 6.0G	total
+
+$ time busk.mk-index -o code.busk ~/code/
+# 137.72s elapsed 120.70s user 5.82s system 91% cpu 636KB maxRSS
+
+$ du -h code.busk
+# 412M	code.busk
+```
+
+
 ## Usage
 
 ### Example
@@ -11,10 +51,11 @@ Building the index on the fly, and piping it into the search tool:
 
 ```shell
 $ busk.mk-index src/ 2> /dev/null | busk.search -c "stbds_arrp"
-src/mk-index.c:1213+10:                 stbds_arrput(cfg->corpus_paths, arg);
-src/mk-index.c:2576+10:         stbds_arrput(pathbuf, '\\0');
-src/mk-index.c:4217+10:         stbds_arrpop(pathbuf);
-src/mk-index.c:4244+10: stbds_arrpush(pathbuf, '\\0');
+src/index.c:9063+10: 	stbds_arrput(postings, path_offset);
+src/mk-index.c:1291+10: 			stbds_arrput(cfg->corpus_paths, arg);
+src/mk-index.c:3701+10: 		stbds_arrput(pathbuf, '\0');
+src/mk-index.c:5449+10: 		stbds_arrpop(pathbuf);
+src/mk-index.c:5476+10: 	stbds_arrpush(pathbuf, '\0');
 ```
 
 ### busk.mk-index
