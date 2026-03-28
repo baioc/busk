@@ -51,11 +51,11 @@ Building the index on the fly, and piping it into the search tool:
 
 ```shell
 $ busk.mk-index src/ 2> /dev/null | busk.search -c "stbds_arrp"
-src/index.c:9063+10: 	stbds_arrput(postings, path_offset);
-src/mk-index.c:1291+10: 			stbds_arrput(cfg->corpus_paths, arg);
-src/mk-index.c:3701+10: 		stbds_arrput(pathbuf, '\0');
-src/mk-index.c:5449+10: 		stbds_arrpop(pathbuf);
-src/mk-index.c:5476+10: 	stbds_arrpush(pathbuf, '\0');
+src/index.c:9090+10:    stbds_arrput(postings, path_offset);
+src/mk-index.c:1291+10:                         stbds_arrput(cfg->corpus_paths, arg);
+src/mk-index.c:3701+10:                 stbds_arrput(pathbuf, '\\0');
+src/mk-index.c:5449+10:                 stbds_arrpop(pathbuf);
+src/mk-index.c:5476+10:         stbds_arrpush(pathbuf, '\\0');
 ```
 
 ### busk.mk-index

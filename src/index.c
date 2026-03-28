@@ -297,8 +297,9 @@ static void index_ngram(struct Index *index, NGram ngram, uint64_t path_offset)
 	}
 
 	// otherwise, append to posting list (offsets are monotonic so this is sorted)
+	uint64_t *old = postings;
 	stbds_arrput(postings, path_offset);
-	stbds_hmput(index->_posting_hm, ngram, postings);
+	if (postings != old) stbds_hmput(index->_posting_hm, ngram, postings);
 }
 
 static size_t round_to_alignment(size_t base_size, size_t alignment)

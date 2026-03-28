@@ -103,7 +103,7 @@ static void print_string_escaped(const char *str, size_t n)
 
 	for (size_t i = 0; i < n; ++i) {
 		const char c = str[i];
-		if ((c >= ' ' && c <= '~') || c == '\t') continue;
+		if ((c >= ' ' && c <= '~' && c != '\\') || c == '\t') continue;
 		needs_escaping = true;
 		break;
 	}
