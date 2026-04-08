@@ -24,7 +24,7 @@ SEARCH_LINE_MAX = 4096
 
 CC = gcc
 CFLAGS = -std=gnu11 -pipe -fvisibility=hidden \
-	-Wall -Wextra -Wbidi-chars=any -Werror=format-security \
+	-Wall -Wextra -Werror=format-security \
 	-DVERSION_MAJOR=$(VERSION_MAJOR) -DVERSION_MINOR=$(VERSION_MINOR) -DVERSION_PATCH=$(VERSION_PATCH) \
 	-DINDEX_NGRAM_SIZE=$(INDEX_NGRAM_SIZE) \
 	-DMKINDEX_MAX_FOLDER_DEPTH=$(MKINDEX_MAX_FOLDER_DEPTH) \
@@ -33,7 +33,7 @@ LDFLAGS = -Wl,-z,defs
 LDLIBS =
 
 ifeq ($(RELEASE), 1)
-	CFLAGS += -O2 -ftree-loop-vectorize -flto -DNDEBUG \
+	CFLAGS += -O2 -flto -DNDEBUG \
 		-D_FORTIFY_SOURCE=2 -fstack-clash-protection -fPIE -fstack-protector-strong -fcf-protection
 	LDFLAGS += -Wl,-O2 -flto -s -Wl,-z,noexecstack -pie -Wl,-z,relro,-z,now
 else
