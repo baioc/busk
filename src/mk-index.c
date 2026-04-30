@@ -153,7 +153,7 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp, int depth)
 		} else if (S_ISDIR(fstat.st_mode)) {
 			const int64_t result = index_dir_rec(index, &pathbuf, depth + 1);
 			if (result >= 0) file_count += result;
-		} else {
+		} else if (S_ISREG(fstat.st_mode) || S_ISLNK(fstat.st_mode)) {
 			FILE *file = fopen(pathbuf, "r");
 			if (!file) {
 				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", pathbuf, errno);
@@ -245,7 +245,7 @@ int main(int argc, char *argv[])
 		} else if (S_ISDIR(fstat.st_mode)) {
 			const int64_t result = index_dir(&index, path);
 			if (result >= 0) files_indexed += result;
-		} else {
+		} else if (S_ISREG(fstat.st_mode) || S_ISLNK(fstat.st_mode)) {
 			FILE *file = fopen(path, "r");
 			if (!file) {
 				LOG_ERRORF("Failed to open file at '%s' (errno = %d)", path, errno);
@@ -260,6 +260,8 @@ int main(int argc, char *argv[])
 				}
 				fclose(file);
 			}
+		} else {
+			LOG_ERRORF("Invalid file type at '%s'", path);
 		}
 	}
 	LOG_INFOF("Successfully indexed the contents of %zu files", files_indexed);
