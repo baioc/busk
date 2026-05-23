@@ -484,8 +484,9 @@ struct IndexResult index_query(struct Index index, struct IndexQuery query)
 
 void index_result_cleanup(struct IndexResult *result)
 {
-	// nothing to free, since result array is shared within index structure
+	if (!result) return;
 	*result = (struct IndexResult){0};
+	// ^ nothing to free, since result array is shared within index structure
 }
 
 

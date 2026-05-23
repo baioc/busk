@@ -2,6 +2,8 @@
 
 Plain text search using an inverted trigram index.
 
+![inverted trigram index](./docs/index.excalidraw.png)
+
 
 ## Performance
 

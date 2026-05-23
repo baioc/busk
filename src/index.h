@@ -52,6 +52,7 @@ size_t index_ngram_size(void);
 // Query the index for exactly `index_ngram_size()` bytes read from the query text.
 struct IndexResult index_query(struct Index index, struct IndexQuery query);
 
+// Deallocate any resources used by the result of an index query.
 void index_result_cleanup(struct IndexResult *result);
 
 // Returns the number of non-null bytes in the path corresponding to the given offset.
