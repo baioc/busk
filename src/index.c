@@ -172,6 +172,24 @@ static int offset_cmp(const void *a, const void *b)
 	else return 0;
 }
 
+static uint16_t read_le16(const uint8_t *bytes) {
+	uint16_t value = 0;
+	for (int i = 0; i < 2; ++i) value |= ((uint16_t)bytes[i] & 0xff) << (i*8);
+	return value;
+}
+
+static uint32_t read_le32(const uint8_t *bytes) {
+	uint32_t value = 0;
+	for (int i = 0; i < 4; ++i) value |= ((uint32_t)bytes[i] & 0xff) << (i*8);
+	return value;
+}
+
+static uint64_t read_le64(const uint8_t *bytes) {
+	uint64_t value = 0;
+	for (int i = 0; i < 8; ++i) value |= ((uint64_t)bytes[i] & 0xff) << (i*8);
+	return value;
+}
+
 int index_load(struct Index *index, FILE *file)
 {
 	// return zero: OK
@@ -185,11 +203,8 @@ int index_load(struct Index *index, FILE *file)
 
 	if (memcmp(&file_header[0], "\xFF""BUSK01\x1A", 8) != 0) return 1;
 
-	uint64_t pathslen = 0;
-	for (int i = 0; i < 8; ++i) pathslen |= ((uint64_t)file_header[8 + i] & 0xff) << (i*8);
-
-	uint64_t ngrams = 0;
-	for (int i = 0; i < 8; ++i) ngrams |= ((uint64_t)file_header[16 + i] & 0xff) << (i*8);
+	uint64_t pathslen = read_le64(&file_header[8]);
+	uint64_t ngrams = read_le64(&file_header[16]);
 
 	uint8_t *paths = NULL;
 	stbds_arrsetlen(paths, pathslen);
@@ -216,17 +231,10 @@ int index_load(struct Index *index, FILE *file)
 			break;
 		}
 
-		entry->allocation_size = 0;
-		for (int i = 0; i < 2; ++i) entry->allocation_size |= ((uint16_t)entry_header[i] & 0xff) << (i*8);
-
-		entry->offset_to_prefix = 0;
-		for (int i = 0; i < 2; ++i) entry->offset_to_prefix |= ((uint16_t)entry_header[2+i] & 0xff) << (i*8);
-
-		entry->prefix_length = 0;
-		for (int i = 0; i < 2; ++i) entry->prefix_length |= ((uint16_t)entry_header[4+i] & 0xff) << (i*8);
-
-		entry->suffix_length = 0;
-		for (int i = 0; i < 2; ++i) entry->suffix_length |= ((uint16_t)entry_header[6+i] & 0xff) << (i*8);
+		entry->allocation_size = read_le16(&entry_header[0]);
+		entry->offset_to_prefix = read_le16(&entry_header[2]);
+		entry->prefix_length = read_le16(&entry_header[4]);
+		entry->suffix_length = read_le16(&entry_header[6]);
 
 		// validation: consistent zeros when uncompressed
 		if ((entry->offset_to_prefix == 0) != (entry->prefix_length == 0)) {
@@ -281,8 +289,7 @@ int index_load(struct Index *index, FILE *file)
 			break;
 		}
 
-		uint32_t postinglen = 0;
-		for (int i = 0; i < 4; ++i) postinglen |= ((uint32_t)ngram_header[i] & 0xff) << (i*8);
+		uint32_t postinglen = read_le32(ngram_header);
 
 		NGram ngram = {0};
 		memcpy(ngram.bytes, &ngram_header[4], INDEX_NGRAM_SIZE);
@@ -308,8 +315,7 @@ int index_load(struct Index *index, FILE *file)
 				break;
 			}
 
-			uint64_t offset = 0;
-			for (int i = 0; i < 8; ++i) offset |= ((uint64_t)leu64[i] & 0xff) << (i*8);
+			uint64_t offset = read_le64(leu64);
 
 			// validation
 			if (
