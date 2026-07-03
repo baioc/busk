@@ -171,19 +171,19 @@ static int offset_cmp(const void *a, const void *b)
 	else return 0;
 }
 
-static uint16_t read_le16(const uint8_t *bytes) {
+static inline uint16_t read_le16(const uint8_t *bytes) {
 	uint16_t value = 0;
 	for (int i = 0; i < 2; ++i) value |= ((uint16_t)bytes[i] & 0xff) << (i*8);
 	return value;
 }
 
-static uint32_t read_le32(const uint8_t *bytes) {
+static inline uint32_t read_le32(const uint8_t *bytes) {
 	uint32_t value = 0;
 	for (int i = 0; i < 4; ++i) value |= ((uint32_t)bytes[i] & 0xff) << (i*8);
 	return value;
 }
 
-static uint64_t read_le64(const uint8_t *bytes) {
+static inline uint64_t read_le64(const uint8_t *bytes) {
 	uint64_t value = 0;
 	for (int i = 0; i < 8; ++i) value |= ((uint64_t)bytes[i] & 0xff) << (i*8);
 	return value;
