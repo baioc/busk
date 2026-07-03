@@ -147,10 +147,9 @@ int64_t index_save(struct Index index, FILE *outfile)
 
 		// posting lists are already sorted, since path offsets are allocated
 		// monotonically, and we only ever append to the end of posting lists
-		// also need to sort posting lists for each individual ngram
-
-		for (uint32_t i = 0; i < postinglen; ++i) {
-			const uint64_t offset = postings[i];
+		for (uint32_t j = 0; j < postinglen; ++j) {
+			const uint64_t offset = postings[j];
+			assert(j == 0 || postings[j-1] < offset);
 			written_bytes += write_le(outfile, offset, sizeof(uint64_t));
 		}
 
@@ -203,34 +202,38 @@ int index_load(struct Index *index, FILE *file)
 
 	if (memcmp(&file_header[0], "\xFF""BUSK01\x1A", 8) != 0) return 1;
 
-	uint64_t pathslen = read_le64(&file_header[8]);
-	uint64_t ngrams = read_le64(&file_header[16]);
+	const uint64_t pathslen = read_le64(&file_header[8]);
+	const uint64_t ngrams = read_le64(&file_header[16]);
 
 	uint8_t *paths = NULL;
-	stbds_arrsetlen(paths, pathslen);
-	if (stbds_arrlenu(paths) != pathslen) {
-		stbds_arrfree(paths);
-		return 2;
-	}
-
 	uint64_t *valid_offsets = NULL;
+	IndexPostingMapping *postingsmap = NULL;
+
 	int error = 0;
 
-	// paths
+	// bulk allocation
+	stbds_arrsetlen(paths, pathslen);
+	if (stbds_arrlenu(paths) != pathslen) {
+		error = 2;
+		goto cleanup;
+	}
+
+	// parse paths
 	uint64_t last_path_added = 0;
 	for (uint64_t offset = 0; offset < pathslen;) {
+		// make sure we can fit an entry in the buffer before casting
 		if (offset + sizeof(IndexPathEntry) >= pathslen) {
 			error = 4;
-			break;
+			goto cleanup;
 		}
 		IndexPathEntry *entry = (IndexPathEntry*)&paths[offset];
 
+		// then read the header
 		uint8_t entry_header[sizeof(IndexPathEntry)] = {0};
 		if (!fread(entry_header, sizeof(entry_header), 1, file)) {
 			error = -4;
-			break;
+			goto cleanup;
 		}
-
 		entry->allocation_size = read_le16(&entry_header[0]);
 		entry->offset_to_prefix = read_le16(&entry_header[2]);
 		entry->prefix_length = read_le16(&entry_header[4]);
@@ -239,7 +242,7 @@ int index_load(struct Index *index, FILE *file)
 		// validation: consistent zeros when uncompressed
 		if ((entry->offset_to_prefix == 0) != (entry->prefix_length == 0)) {
 			error = 4;
-			break;
+			goto cleanup;
 		}
 
 		// validation: avoid overflows and allocsize/famlength mismatch
@@ -252,41 +255,35 @@ int index_load(struct Index *index, FILE *file)
 			|| entry->suffix_length > entry->allocation_size - sizeof(IndexPathEntry) - 1 // len-size mismatch
 		) {
 			error = 4;
-			break;
+			goto cleanup;
 		}
 
 		const size_t fam_size = entry->allocation_size - sizeof(IndexPathEntry);
 		if (!fread(entry->suffix_bytes, fam_size, 1, file)) {
 			error = -4;
-			break;
+			goto cleanup;
 		}
 
 		// validation: strlen on the suffix should match suffix_length
 		const size_t len = strnlen(entry->suffix_bytes, fam_size);
 		if (entry->suffix_length != len) {
 			error = 4;
-			break;
+			goto cleanup;
 		}
 
 		stbds_arrpush(valid_offsets, offset);
 		last_path_added = offset;
 		offset += entry->allocation_size;
 	}
-	if (error) {
-		stbds_arrfree(valid_offsets);
-		stbds_arrfree(paths);
-		return error;
-	}
 
 	const size_t total_paths = stbds_arrlenu(valid_offsets);
 
-	// ngrams
-	IndexPostingMapping *postingsmap = NULL;
+	// parse ngrams
 	for (uint64_t i = 0; i < ngrams; ++i) {
 		uint8_t ngram_header[4 + sizeof(NGram)] = {0};
 		if (!fread(ngram_header, sizeof(ngram_header), 1, file)) {
-			error = -5;
-			break;
+			error = -3;
+			goto cleanup;
 		}
 
 		uint32_t postinglen = read_le32(ngram_header);
@@ -297,7 +294,7 @@ int index_load(struct Index *index, FILE *file)
 		// validation: we shouldn't see an ngram twice
 		if (stbds_hmgetp_null(postingsmap, ngram)) {
 			error = 5;
-			break;
+			goto cleanup;
 		}
 
 		uint64_t *postings = NULL;
@@ -305,7 +302,7 @@ int index_load(struct Index *index, FILE *file)
 		if (stbds_arrlenu(postings) != postinglen) {
 			stbds_arrfree(postings);
 			error = 5;
-			break;
+			goto cleanup;
 		}
 
 		for (uint32_t i = 0; i < postinglen; ++i) {
@@ -332,30 +329,31 @@ int index_load(struct Index *index, FILE *file)
 		}
 		if (error) {
 			stbds_arrfree(postings);
-			break;
+			goto cleanup;
 		}
 
 		stbds_hmput(postingsmap, ngram, postings);
 	}
+
+cleanup:
 	if (error) {
 		for (size_t i = 0; i < stbds_hmlenu(postingsmap); ++i) {
 			uint64_t *postings = postingsmap[i].value;
 			stbds_arrfree(postings);
 		}
 		stbds_hmfree(postingsmap);
-		stbds_arrfree(valid_offsets);
 		stbds_arrfree(paths);
-		return error;
+	} else {
+		*index = (struct Index){
+			._path_arr = paths,
+			._posting_hm = postingsmap,
+			._last_path_added = last_path_added,
+		};
 	}
 
 	stbds_arrfree(valid_offsets);
 
-	*index = (struct Index){
-		._path_arr = paths,
-		._posting_hm = postingsmap,
-		._last_path_added = last_path_added,
-	};
-	return 0;
+	return error;
 }
 
 
