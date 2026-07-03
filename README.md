@@ -53,11 +53,12 @@ Building the index on the fly, and piping it into the search tool:
 
 ```shell
 $ busk.mk-index src/ 2> /dev/null | busk.search -c "stbds_arrp"
-src/index.c:9090+10:    stbds_arrput(postings, path_offset);
-src/mk-index.c:1291+10:                         stbds_arrput(cfg->corpus_paths, arg);
-src/mk-index.c:3701+10:                 stbds_arrput(pathbuf, '\\0');
-src/mk-index.c:5449+10:                 stbds_arrpop(pathbuf);
-src/mk-index.c:5476+10:         stbds_arrpush(pathbuf, '\\0');
+src/index.c:8481+10:            stbds_arrpush(valid_offsets, offset);
+src/index.c:11436+10:   stbds_arrpush(postings, path_offset);
+src/mk-index.c:1291+10:                         stbds_arrpush(cfg->corpus_paths, arg);
+src/mk-index.c:3702+10:                 stbds_arrpush(pathbuf, '\\0');
+src/mk-index.c:5505+10:                 stbds_arrpop(pathbuf);
+src/mk-index.c:5532+10:         stbds_arrpush(pathbuf, '\\0');
 ```
 
 ### busk.mk-index
@@ -78,7 +79,7 @@ Usage: busk.mk-index [-v] [-o OUTPUT] <FILE/DIR>...
 Greps indexed files for a given search string, printing results as `<path>:<offset>+<len>: <match>`
 
 ```shell
-Usage: search [OPTION...] "<SEARCH STRING>"
+Usage: search [-v] [-c] [-i INPUT] "<SEARCH STRING>"
   -c, --color                Add terminal colors to search results
   -i, --index=INPUT          Read index file from INPUT instead of stdin
   -v, --verbose              Print more verbose output to stderr

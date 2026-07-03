@@ -62,7 +62,7 @@ static error_t cli_parser(int key, char *arg, struct argp_state *state)
 			break;
 
 		case ARGP_KEY_ARG:
-			stbds_arrput(cfg->corpus_paths, arg);
+			stbds_arrpush(cfg->corpus_paths, arg);
 			break;
 
 		case ARGP_KEY_END:
@@ -145,7 +145,7 @@ static int64_t index_dir_rec(struct Index *index, char **pathbufp, int depth)
 		const size_t basename_length = strlen(basename);
 		const size_t basename_offset = stbds_arraddnindex(pathbuf, basename_length);
 		memcpy(&pathbuf[basename_offset], basename, basename_length);
-		stbds_arrput(pathbuf, '\0'); // <- OK, back to null-terminated
+		stbds_arrpush(pathbuf, '\0'); // <- OK, back to null-terminated
 
 		struct stat fstat = {0};
 		if (stat(pathbuf, &fstat) != 0) {

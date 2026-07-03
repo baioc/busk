@@ -49,6 +49,16 @@ void index_cleanup(struct Index *index)
 }
 
 
+static size_t round_to_alignment(size_t base_size, size_t alignment)
+{
+	assert(alignment > 0);
+	const size_t modulo = base_size % alignment;
+	if (modulo == 0) return base_size; // already aligned
+	const size_t padding = alignment - modulo;
+	return base_size + padding;
+}
+
+
 // binary file format:
 //
 // - header:
@@ -153,6 +163,15 @@ int64_t index_save(struct Index index, FILE *outfile)
 	return error ? error : written_bytes;
 }
 
+static int offset_cmp(const void *a, const void *b)
+{
+	const uint64_t *lhs = a;
+	const uint64_t *rhs = b;
+	if (*lhs < *rhs) return -1;
+	else if (*lhs > *rhs) return 1;
+	else return 0;
+}
+
 int index_load(struct Index *index, FILE *file)
 {
 	// return zero: OK
@@ -179,16 +198,23 @@ int index_load(struct Index *index, FILE *file)
 		return 2;
 	}
 
+	uint64_t *valid_offsets = NULL;
+	int error = 0;
+
 	// paths
 	uint64_t last_path_added = 0;
 	for (uint64_t offset = 0; offset < pathslen;) {
+		if (offset + sizeof(IndexPathEntry) >= pathslen) {
+			error = 4;
+			break;
+		}
+		IndexPathEntry *entry = (IndexPathEntry*)&paths[offset];
+
 		uint8_t entry_header[sizeof(IndexPathEntry)] = {0};
 		if (!fread(entry_header, sizeof(entry_header), 1, file)) {
-			stbds_arrfree(paths);
-			return -4;
+			error = -4;
+			break;
 		}
-
-		IndexPathEntry *entry = (IndexPathEntry*)&paths[offset];
 
 		entry->allocation_size = 0;
 		for (int i = 0; i < 2; ++i) entry->allocation_size |= ((uint16_t)entry_header[i] & 0xff) << (i*8);
@@ -202,20 +228,52 @@ int index_load(struct Index *index, FILE *file)
 		entry->suffix_length = 0;
 		for (int i = 0; i < 2; ++i) entry->suffix_length |= ((uint16_t)entry_header[6+i] & 0xff) << (i*8);
 
+		// validation: consistent zeros when uncompressed
+		if ((entry->offset_to_prefix == 0) != (entry->prefix_length == 0)) {
+			error = 4;
+			break;
+		}
+
+		// validation: avoid overflows and allocsize/famlength mismatch
+		if (
+			entry->offset_to_prefix > offset // offset too big (underflow)
+			|| (entry->prefix_length > 0 && offset - entry->offset_to_prefix != last_path_added) // offset invalid
+			|| entry->allocation_size > pathslen - offset // allocation size too big (overflow)
+			|| entry->allocation_size != round_to_alignment(entry->allocation_size, alignof(IndexPathEntry)) // unaligned
+			|| entry->allocation_size < sizeof(IndexPathEntry) + 1 // allocation size too small (underflow)
+			|| entry->suffix_length > entry->allocation_size - sizeof(IndexPathEntry) - 1 // len-size mismatch
+		) {
+			error = 4;
+			break;
+		}
 
 		const size_t fam_size = entry->allocation_size - sizeof(IndexPathEntry);
 		if (!fread(entry->suffix_bytes, fam_size, 1, file)) {
-			stbds_arrfree(paths);
-			return -4;
+			error = -4;
+			break;
 		}
 
+		// validation: strlen on the suffix should match suffix_length
+		const size_t len = strnlen(entry->suffix_bytes, fam_size);
+		if (entry->suffix_length != len) {
+			error = 4;
+			break;
+		}
+
+		stbds_arrpush(valid_offsets, offset);
 		last_path_added = offset;
 		offset += entry->allocation_size;
 	}
+	if (error) {
+		stbds_arrfree(valid_offsets);
+		stbds_arrfree(paths);
+		return error;
+	}
+
+	const size_t total_paths = stbds_arrlenu(valid_offsets);
 
 	// ngrams
 	IndexPostingMapping *postingsmap = NULL;
-	int error = 0;
 	for (uint64_t i = 0; i < ngrams; ++i) {
 		uint8_t ngram_header[4 + sizeof(NGram)] = {0};
 		if (!fread(ngram_header, sizeof(ngram_header), 1, file)) {
@@ -229,8 +287,20 @@ int index_load(struct Index *index, FILE *file)
 		NGram ngram = {0};
 		memcpy(ngram.bytes, &ngram_header[4], INDEX_NGRAM_SIZE);
 
+		// validation: we shouldn't see an ngram twice
+		if (stbds_hmgetp_null(postingsmap, ngram)) {
+			error = 5;
+			break;
+		}
+
 		uint64_t *postings = NULL;
 		stbds_arrsetlen(postings, postinglen);
+		if (stbds_arrlenu(postings) != postinglen) {
+			stbds_arrfree(postings);
+			error = 5;
+			break;
+		}
+
 		for (uint32_t i = 0; i < postinglen; ++i) {
 			uint8_t leu64[8] = {0};
 			if (!fread(leu64, sizeof(leu64), 1, file)) {
@@ -239,10 +309,15 @@ int index_load(struct Index *index, FILE *file)
 			}
 
 			uint64_t offset = 0;
-			for (int i = 0; i < 8; ++i) {
-				offset |= ((uint64_t)leu64[i] & 0xff) << (i*8);
-			}
-			if (offset >= pathslen) {
+			for (int i = 0; i < 8; ++i) offset |= ((uint64_t)leu64[i] & 0xff) << (i*8);
+
+			// validation
+			if (
+				offset >= pathslen // offset must be within paths memory block
+				|| (i > 0 && offset <= postings[i-1]) // must also be sorted and unique
+				|| bsearch(&offset, valid_offsets, total_paths, sizeof(offset), offset_cmp) == NULL
+				// ^ and must point to a valid entry (which we have parsed above)
+			) {
 				error = 5;
 				break;
 			}
@@ -262,9 +337,12 @@ int index_load(struct Index *index, FILE *file)
 			stbds_arrfree(postings);
 		}
 		stbds_hmfree(postingsmap);
+		stbds_arrfree(valid_offsets);
 		stbds_arrfree(paths);
 		return error;
 	}
+
+	stbds_arrfree(valid_offsets);
 
 	*index = (struct Index){
 		._path_arr = paths,
@@ -298,17 +376,8 @@ static void index_ngram(struct Index *index, NGram ngram, uint64_t path_offset)
 
 	// otherwise, append to posting list (offsets are monotonic so this is sorted)
 	uint64_t *old = postings;
-	stbds_arrput(postings, path_offset);
+	stbds_arrpush(postings, path_offset);
 	if (postings != old) stbds_hmput(index->_posting_hm, ngram, postings);
-}
-
-static size_t round_to_alignment(size_t base_size, size_t alignment)
-{
-	assert(alignment > 0);
-	const size_t modulo = base_size % alignment;
-	if (modulo == 0) return base_size; // already aligned
-	const size_t padding = alignment - modulo;
-	return base_size + padding;
 }
 
 static size_t shared_length(const char *a, size_t alen, const char *b, size_t blen)
@@ -386,6 +455,7 @@ static uint64_t add_path_compressed(struct Index *index, const char *filepath, u
 		sizeof(IndexPathEntry) + suffix_length + 1, // +1 for null terminator
 		alignof(IndexPathEntry)
 	);
+	assert(allocation_size <= UINT16_MAX);
 	stbds_arraddnindex(index->_path_arr, allocation_size);
 	memset(&index->_path_arr[current_offset], 0, allocation_size);
 	IndexPathEntry *entry = (IndexPathEntry*)&index->_path_arr[current_offset];
@@ -405,7 +475,10 @@ int64_t index_file(struct Index *index, FILE *file, const char *filepath, size_t
 {
 	int64_t ngram_count = 0;
 
-	if (pathlen + 1 > UINT16_MAX) return -UINT16_MAX; // see IndexPathEntry
+	// avoid overflow when allocating in add_path_compressed
+	if (pathlen > UINT16_MAX - (sizeof(IndexPathEntry) + 1 + alignof(IndexPathEntry))) {
+		return -UINT16_MAX;
+	}
 	const uint64_t path_offset = add_path_compressed(index, filepath, pathlen);
 
 	NGram ngram = {0};
